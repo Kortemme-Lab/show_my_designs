@@ -477,7 +477,7 @@ class ModelView (gtk.Window):
     
         hotkeys = {
                 'tab': self.cycle_y_metric,
-                'shift-iso_left_tab': self.cycle_x_metric,
+                'space': self.cycle_x_metric,
                 'escape': self.normal_mode,
         }
         
