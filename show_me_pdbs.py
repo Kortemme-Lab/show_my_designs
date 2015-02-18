@@ -1092,8 +1092,9 @@ def main():
         sys.exit()
 
     if groups and not args['--quiet']:
-        gui = ModelView(groups, xlim=args['--xlim'])
-        if not os.fork(): gtk.main()
+        if not os.fork():
+            gui = ModelView(groups, xlim=args['--xlim'])
+            gtk.main()
 
 if __name__ == '__main__':
     main()
