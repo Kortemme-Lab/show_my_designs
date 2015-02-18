@@ -298,6 +298,7 @@ class ModelView (gtk.Window):
 
         model_list = self.setup_model_list()
         model_viewer = self.setup_model_viewer()
+        #model_viewer.set_size_request(529, 529)
 
         hbox = gtk.HBox()
         if len(groups) > 1:

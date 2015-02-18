@@ -1,0 +1,4 @@
+*.pdb
+*.sho
+/demo_data
+/fast_demo_data
