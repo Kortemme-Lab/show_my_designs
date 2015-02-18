@@ -326,7 +326,6 @@ class ModelView (gtk.Window):
         self.view.set_model(list_store)
         self.view.set_rubber_banding(True)
         self.view.set_enable_search(False)
-        #self.view.set_size_request(200, -1)
 
         columns = [
                 ('Name', 'directory'),
@@ -375,9 +374,19 @@ class ModelView (gtk.Window):
         search_buffer.connect('deleted-text', self.on_search_in_notes)
         search_buffer.connect('inserted-text', self.on_search_in_notes)
 
+        save_paths = gtk.Button("Save selected paths")
+        save_funnels = gtk.Button("Save selected funnels")
+
+        save_paths.connect(
+                'clicked', lambda _: self.save_interesting_paths())
+        save_funnels.connect(
+                'clicked', lambda _: self.save_interesting_funnels())
+
         vbox = gtk.VBox()
         vbox.pack_start(self.search_form, expand=False)
         vbox.pack_start(frame)
+        vbox.pack_start(save_paths, expand=False)
+        vbox.pack_start(save_funnels, expand=False)
 
         return vbox
 
@@ -432,12 +441,8 @@ class ModelView (gtk.Window):
         self.mouse_position = gtk.Label("")
 
         table = gtk.Table(3, 5)
-        #table.attach(self.status_bar, 0, 5, 0, 1)
         table.attach(self.toolbar, 0, 1, 0, 3)
-        #table.attach(y_axis_menu, 2, 3, 2, 3, xoptions=0, yoptions=0)
-        #table.attach(gtk.Label(' vs. '), 3, 4, 2, 3, xoptions=0, yoptions=0)
         table.attach(self.mouse_position, 3, 4, 1, 2, xoptions=0, yoptions=0, xpadding=3)
-        #table.attach(x_axis_menu, 4, 5, 2, 3, xoptions=0, yoptions=0)
 
         vbox = gtk.VBox()
         vbox.pack_start(self.canvas)
@@ -464,10 +469,6 @@ class ModelView (gtk.Window):
         frame.add(scroll_window)
 
         return frame
-
-    def setup_status_bar(self):
-        self.status_bar = gtk.Statusbar()
-        return self.status_bar
 
 
     def on_hotkey_press(self, widget, event):
@@ -725,6 +726,66 @@ class ModelView (gtk.Window):
         # know to keep the drop-down menu in sync.
 
         self.toolbar.y_axis_menu.set_active(i)
+
+    def save_interesting_paths(self):
+        chooser = gtk.FileChooserDialog(
+                "Save interesting paths",
+                parent=self,
+                action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                buttons=(
+                    gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+                    gtk.STOCK_SAVE, gtk.RESPONSE_OK))
+
+        chooser.set_current_folder(os.getcwd())
+        chooser.set_current_name('interesting_paths.txt')
+
+        response = chooser.run()
+
+        if response == gtk.RESPONSE_OK:
+            selected_groups = [self.groups[key] for key in self.keys]
+            with open(chooser.get_filename(), 'w') as file:
+                file.writelines(
+                        os.path.join(
+                            group.directory,
+                            group.paths[group.representative]) + '\n'
+                        for group in selected_groups)
+
+        chooser.destroy()
+
+    def save_interesting_funnels(self):
+        from matplotlib.backends.backend_pdf import PdfPages
+        import matplotlib.pyplot as plt
+
+        selected_groups = [self.groups[key] for key in self.keys]
+
+        chooser = gtk.FileChooserDialog(
+                "Save interesting funnels",
+                parent=self,
+                action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                buttons=(
+                    gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+                    gtk.STOCK_SAVE, gtk.RESPONSE_OK))
+
+        chooser.set_current_folder(os.getcwd())
+        chooser.set_current_name('interesting_funnels.pdf')
+
+        response = chooser.run()
+
+        if response == gtk.RESPONSE_OK:
+            pdf = PdfPages(chooser.get_filename())
+
+            for index, group in enumerate(selected_groups):
+                plt.figure(figsize=(8.5, 11))
+                plt.suptitle(group.directory)
+
+                self.plot_models(plt.gca(), [group])
+
+                pdf.savefig()
+                plt.close()
+
+            pdf.close()
+
+        chooser.destroy()
 
     def plot_models(self, axes, groups, **kwargs):
         from itertools import count
@@ -993,7 +1054,7 @@ def parse_record_from_pdb(record, pdb_path, lines):
         if line.startswith('total_score') or line.startswith('pose'):
             record['total_score'] = float(line.split()[1])
 
-        if line.startswith('loop_rmsd'):
+        if line.startswith('loop_backbone_rmsd'):
             record['loop_rmsd'] = float(line.split()[1])
 
         if line.startswith('delta_buried_unsats'):
