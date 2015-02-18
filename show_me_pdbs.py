@@ -703,16 +703,28 @@ class ModelView (gtk.Window):
         i = (i + 1) % len(self.defined_metrics)
         if self.defined_metrics[i] == self.y_metric:
             i = (i + 1) % len(self.defined_metrics)
-        self.x_metric = self.defined_metrics[i]
-        self.update_plot()
+        
+        # Change the axis by programmatically selecting a new entry in the 
+        # corresponding drop-down menu in the toolbar.  This is incredibly 
+        # roundabout (and it kinda breaks encapsulation, although I consider 
+        # ModelViewer and ModelToolbar to be friends), but it's the only way I 
+        # know to keep the drop-down menu in sync.
+
+        self.toolbar.x_axis_menu.set_active(i)
 
     def cycle_y_metric(self):
         i = self.defined_metrics.index(self.y_metric)
         i = (i + 1) % len(self.defined_metrics)
         if self.defined_metrics[i] == self.x_metric:
             i = (i + 1) % len(self.defined_metrics)
-        self.y_metric = self.defined_metrics[i]
-        self.update_plot()
+
+        # Change the axis by programmatically selecting a new entry in the 
+        # corresponding drop-down menu in the toolbar.  This is incredibly 
+        # roundabout (and it kinda breaks encapsulation, although I consider 
+        # ModelViewer and ModelToolbar to be friends), but it's the only way I 
+        # know to keep the drop-down menu in sync.
+
+        self.toolbar.y_axis_menu.set_active(i)
 
     def plot_models(self, axes, groups, **kwargs):
         from itertools import count
@@ -889,14 +901,16 @@ class ModelToolbar (NavigationToolbar2GTKAgg):
             combo_box.connect('changed', callback)
             return combo_box
 
-        x_axis_menu = make_axis_menu(parent.x_metric, parent.on_change_x_metric)
-        y_axis_menu = make_axis_menu(parent.y_metric, parent.on_change_y_metric)
+        self.x_axis_menu = make_axis_menu(
+                parent.x_metric, parent.on_change_x_metric)
+        self.y_axis_menu = make_axis_menu(
+                parent.y_metric, parent.on_change_y_metric)
 
         table = gtk.Table(3, 4)
         table.attach(gtk.SeparatorToolItem(), 0, 1, 0, 3)
-        table.attach(y_axis_menu, 1, 2, 1, 2, xoptions=0, yoptions=0)
+        table.attach(self.y_axis_menu, 1, 2, 1, 2, xoptions=0, yoptions=0)
         table.attach(gtk.Label(' vs. '), 2, 3, 1, 2, xoptions=0, yoptions=0)
-        table.attach(x_axis_menu, 3, 4, 1, 2, xoptions=0, yoptions=0)
+        table.attach(self.x_axis_menu, 3, 4, 1, 2, xoptions=0, yoptions=0)
 
         tool_item = gtk.ToolItem()
         tool_item.add(table)
@@ -908,19 +922,12 @@ class ModelToolbar (NavigationToolbar2GTKAgg):
 
 
 
-metric_parsers = {
-        'total_score': (
-            lambda line: line.startswith('total_score') or line.startswith('pose'),
-            lambda line: float(line.split()[1])),
-
-        'loop_rmsd': (
-            lambda line: line.startswith('loop_backbone_rmsd'),
-            lambda line: float(line.split()[1])),
-
-        'delta_buried_unsats': (
-            lambda line: line.startswith('delta_buried_unsats'),
-            lambda line: float(line.split()[1])),
+metric_titles = {
+        'total_score': 'Total Score (REU)',
+        'loop_rmsd': u'Loop RMSD (Å)',
+        'delta_buried_unsats': u'Δ Buried Unsats',
 }
+
 metric_limits = {
         'total_score': lambda x: (
             min(x),
@@ -932,12 +939,6 @@ metric_limits = {
 }
 metric_guides = {
         'loop_rmsd': 1.0,
-}
-
-metric_titles = {
-        'total_score': 'Total Score (REU)',
-        'loop_rmsd': u'Loop RMSD (Å)',
-        'delta_buried_unsats': u'Δ Buried Unsats',
 }
 
 
@@ -978,7 +979,7 @@ def parse_records_from_pdbs(pdb_paths):
         # different kinds of information.
 
         record = {'path': os.path.basename(path)}
-        self.parse_record_from_pdb(record, path, lines)
+        parse_record_from_pdb(record, path, lines)
         records.append(record)
 
     if pdb_paths: print
@@ -989,9 +990,14 @@ def parse_record_from_pdb(record, pdb_path, lines):
     # of these lines are specific to certain simulations.
 
     for line in lines:
-        for metric in metric_parsers:
-            condition, parser = metric_parsers[metric]
-            if condition(line): record[metric] = parser(line)
+        if line.startswith('total_score') or line.startswith('pose'):
+            record['total_score'] = float(line.split()[1])
+
+        if line.startswith('loop_rmsd'):
+            record['loop_rmsd'] = float(line.split()[1])
+
+        if line.startswith('delta_buried_unsats'):
+            record['delta_buried_unsats'] = float(line.split()[1])
 
 def try_to_run_command(command):
     with open(os.devnull, 'w') as devnull:
