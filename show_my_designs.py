@@ -2,14 +2,10 @@
 # encoding: utf-8
 
 """\
-Display score vs distance plots for sets of models generated during the design 
-pipeline.  In particular, this script can be used to visualize results from 
-both the model building and design validation stages of the pipeline.  Often 
-you would use this script to get a big-picture view of your designs before 
-deciding which are worth carrying forward.
+Judge forward-folded candidates in computational protein design pipelines.
 
 Usage:
-    view_models.py [options] <pdb_directories>...
+    show_me_pdbs.py [options] <pdb_directories>...
 
 Options:
     -f, --force
@@ -18,66 +14,22 @@ Options:
     -q, --quiet
         Build the cache, but don't launch the GUI.
 
-    -x, --xlim=XLIM
-        Set the x-axis limit for all distance metrics.
+Features:
+    1. Extract quality metrics from forward-folded models and plot them against 
+       each other in any combination.
+
+    2. Easily visualize specific models by right-clicking on plotted points.  
+       Add your own visualizations by writing `*.sho' scripts.
+
+    3. Plot multiple designs at once, for comparison purposes.
+
+    4. Keep notes on each design, and search your notes to find the designs you 
+       want to visualize.
 """
-
-## Ideas
-
-# There needs to be a cache, because reading 500 (or even 10000) structures can 
-# take forever.  It would then be nice if this program's cache was compatible 
-# with PIP (although this is the more fundamental program so in principle PIP 
-# would have been designed around this).
-#
-# I guess what makes the most sense for this program's cache is a pickled 
-# pandas.DataFrame where the axes names are derived from the column names, and 
-# "path" is a special column that gives the path.  Perhaps "path" is not 
-# special and non-numeric columns are just ignored.
-#
-# Now there is a weirdness.  If you run view_models before a PIP script on a 
-# directory, PIP won't be able to use that cache.  PIP could possibly notice 
-# that the cache is incomplete and regenerate it, but that would be slow.  I 
-# might still need to have a PIP-ified version of view-models that tweaks how 
-# the cache is generated.  That could actually be a feature.  Different 
-# projects will have different axes, and how can PIP know about them?  Well, I 
-# guess the most intuitive way is to put the axes in the PDB files and to let 
-# PIP worry about caching them.  But I could have a magically-named function 
-# that view_models calls to get all the values for all the axes for a certain 
-# pose.
-#
-# I'm starting to think that monkey-patching is the way to go.  ModelGroup can 
-# have a method that returns a pandas data structure for the given directory, 
-# and I can subclass ModelGroup, provide PIP-specific caching, and replace 
-# view_models.ModelGroup with the subclass (monkey-patching).  The default 
-# implementation can make a simple score-vs-rmsd cache, and can recognize a few 
-# different kinds of formatted PDB remarks.  Or it could not even make a cache.
-
-# I also need a way to discover "analysis" scripts.  I can't simply keep the 
-# scripts in the directory being displayed, because I will often want to use 
-# the same scripts for multiple directories.  So example applications:
-#
-# PIP: I will want the same scripts for the whole design project.  The scripts 
-# will load the given structure and the wildtype structure.
-#
-# LooBen: I will want a different wildtype structure for each directory, but I 
-# would probably write one script that figured out which wildtype structure to 
-# show from the name of the input structure.
-#
-# It wouldn't be too hard to search all the way down the directory tree for 
-# scripts, but how can I distinguish "view models" scripts from other files?  
-# Maybe I could glob for 'view_model.*' in any directory below the target.  
-# Could I make a new file extension?  *.sho?  Will have to use a shebang to 
-# know how to execute the script anyways.  Plus it is a new file format: I'll 
-# have to interpret a comment of something (maybe the file name) to get the 
-# title.
-
-# I could have another file extension for scripts that calculate axes for each 
-# model.  Script: pdb in; axis names, axis values out.
 
 ## Imports
 import collections
 import glob
-import gtk
 import gzip
 import os
 import pango
@@ -87,6 +39,7 @@ import subprocess
 import sys
 import yaml
 
+import gtk
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -97,7 +50,7 @@ from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
 from matplotlib.backends.backend_gtkagg import NavigationToolbar2GTKAgg
 
 
-class ModelGroup (object):
+class Design (object):
 
     def __init__(self, directory, use_cache=True):
         self.directory = directory
@@ -262,9 +215,9 @@ class ModelGroup (object):
             os.remove(self.rep_path)
 
 
-class ModelView (gtk.Window):
+class ShowMyDesigns (gtk.Window):
 
-    def __init__(self, groups, filter='all', xlim=None):
+    def __init__(self, designs):
         
         # Setup the parent class.
 
@@ -274,11 +227,9 @@ class ModelView (gtk.Window):
 
         # Setup the data members.
 
-        self.groups = groups
+        self.designs = designs
         self.keys = list()
-        self.filter = filter
         self.selected_model = None
-        self.xlim = float(xlim) if xlim is not None else None
 
         self.defined_metrics = sorted(set.intersection(
                 *[x.defined_metrics for x in self]))
@@ -301,7 +252,7 @@ class ModelView (gtk.Window):
         #model_viewer.set_size_request(529, 529)
 
         hbox = gtk.HBox()
-        if len(groups) > 1:
+        if len(designs) > 1:
             hbox.pack_start(model_list, expand=False, padding=3)
         hbox.pack_start(model_viewer, expand=True, padding=3)
 
@@ -314,7 +265,7 @@ class ModelView (gtk.Window):
         self.set_focus(None)
 
     def __iter__(self):
-        return iter(self.groups.values())
+        return iter(self.designs.values())
 
 
     def setup_model_list(self):
@@ -327,6 +278,7 @@ class ModelView (gtk.Window):
         self.view.set_model(list_store)
         self.view.set_rubber_banding(True)
         self.view.set_enable_search(False)
+        self.view.set_headers_visible(False)
 
         columns = [
                 ('Name', 'directory'),
@@ -337,17 +289,17 @@ class ModelView (gtk.Window):
 
             def cell_data_func(column, cell, model, iter, attr):
                 key = model.get_value(iter, 0)
-                group = self.groups[key]
-                text = getattr(group, attr)
+                design = self.designs[key]
+                text = getattr(design, attr)
                 cell.set_property('text', text)
 
             def sort_func(model, iter_1, iter_2, attr):
                 key_1 = model.get_value(iter_1, 0)
                 key_2 = model.get_value(iter_2, 0)
-                group_1 = self.groups[key_1]
-                group_2 = self.groups[key_2]
-                value_1 = getattr(group_1, attr)
-                value_2 = getattr(group_2, attr)
+                design_1 = self.designs[key_1]
+                design_2 = self.designs[key_2]
+                value_1 = getattr(design_1, attr)
+                value_2 = getattr(design_2, attr)
                 return cmp(value_1, value_2)
 
             list_store.set_sort_func(index, sort_func, attr);
@@ -358,7 +310,7 @@ class ModelView (gtk.Window):
             self.view.append_column(column)
 
         selector = self.view.get_selection()
-        selector.connect("changed", self.on_select_groups)
+        selector.connect("changed", self.on_select_designs)
         selector.set_mode(gtk.SELECTION_MULTIPLE)
 
         scroller = gtk.ScrolledWindow()
@@ -411,7 +363,7 @@ class ModelView (gtk.Window):
 
         # Create the canvas.
 
-        self.canvas = ModelCanvas(figure)
+        self.canvas = FigureCanvas(figure)
         self.canvas.mpl_connect('pick_event', self.on_select_model)
         self.canvas.mpl_connect('button_press_event', self.on_click_plot_mpl)
         self.canvas.mpl_connect('motion_notify_event', self.on_move_mouse_mpl)
@@ -420,7 +372,7 @@ class ModelView (gtk.Window):
 
         # Create the tool bar.
 
-        self.toolbar = ModelToolbar(self.canvas, self)
+        self.toolbar = NavigationToolbar(self.canvas, self)
 
         # Create the axis menus.
         
@@ -482,35 +434,31 @@ class ModelView (gtk.Window):
                 'space': self.cycle_x_metric,
                 'escape': self.normal_mode,
         }
-        
         normal_mode_hotkeys = {
-                'j': self.next_group,      'f': self.next_group,
-                'k': self.previous_group,  'd': self.previous_group,
                 'i': self.insert_mode,     'a': self.insert_mode,
-                'z': self.zoom_mode,       'slash': self.search_mode,
+                'z': self.zoom_mode,
                 'x': self.pan_mode,
                 'c': self.refocus_plot,
+        }
+        multi_design_hotkeys = {
+                'j': self.next_design,     'f': self.next_design,
+                'k': self.previous_design, 'd': self.previous_design,
+                'slash': self.search_mode,
         }
 
         if self.get_focus() not in (self.notes, self.search_form):
             hotkeys.update(normal_mode_hotkeys)
+            if len(self.designs) > 1:
+                hotkeys.update(multi_design_hotkeys)
 
         if key in hotkeys:
             hotkeys[key]()
             return True
 
-    def on_toggle_filter(self, widget, key):
-        if widget.get_active():
-            self.filters.add(key)
-        else:
-            self.filters.discard(key)
-
-        self.update_filter()
-
     def on_search_in_notes(self, entry_buffer, *_):
         self.update_filter()
 
-    def on_select_groups(self, selection) :
+    def on_select_designs(self, selection) :
         new_keys = []
         old_keys = self.keys[:]
         self.keys = []
@@ -521,8 +469,8 @@ class ModelView (gtk.Window):
             key = model.get_value(iter, 0)
             new_keys.append(key)
 
-        # Don't change the order of groups that were already selected.  The 
-        # order affects how the color of the group in the score vs rmsd plot, 
+        # Don't change the order of designs that were already selected.  The 
+        # order affects how the color of the design in the score vs rmsd plot, 
         # and things get confusing if it changes.
 
         for key in old_keys:
@@ -543,7 +491,7 @@ class ModelView (gtk.Window):
             self.update_annotations()
 
     def on_select_model(self, event):
-        self.selected_model = event.ind[0], event.artist.group
+        self.selected_model = event.ind[0], event.artist.design
 
     def on_move_mouse_mpl(self, event):
         if event.xdata is None or event.ydata is None:
@@ -567,9 +515,9 @@ class ModelView (gtk.Window):
 
         # Figure out which model was clicked.
 
-        index, group = self.selected_model
-        path = os.path.join(group.directory, group.paths[index])
-        is_rep = (group.representative == index)
+        index, design = self.selected_model
+        path = os.path.join(design.directory, design.paths[index])
+        is_rep = (design.representative == index)
         self.selected_model = None
 
         # Search for scripts that can perform some action using the clicked 
@@ -579,7 +527,7 @@ class ModelView (gtk.Window):
         # drop-down menu.  If selected, the script will be called with sh as 
         # the interpreter and the path to the model as the singular argument.
 
-        directory = os.path.abspath(group.directory)
+        directory = os.path.abspath(design.directory)
         sho_scripts = []
 
         while directory != os.path.abspath('/'):
@@ -617,14 +565,14 @@ class ModelView (gtk.Window):
         copy_path.connect('activate', self.on_copy_model_path, path)
         file_menu.append(copy_path)
 
-        if index == group.representative:
+        if index == design.representative:
             choose_rep = gtk.MenuItem("Reset representative")
             choose_rep.connect(
-                'activate', self.on_set_representative, group, None)
+                'activate', self.on_set_representative, design, None)
         else:
             choose_rep = gtk.MenuItem("Set as representative")
             choose_rep.connect(
-                'activate', self.on_set_representative, group, index)
+                'activate', self.on_set_representative, design, index)
         file_menu.append(choose_rep)
 
         file_menu.foreach(lambda item: item.show())
@@ -635,15 +583,15 @@ class ModelView (gtk.Window):
         xsel = subprocess.Popen(['xsel', '-pi'], stdin=subprocess.PIPE)
         xsel.communicate(path)
 
-    def on_set_representative(self, widget, group, index):
-        group.set_representative(index)
+    def on_set_representative(self, widget, design, index):
+        design.set_representative(index)
         self.update_plot()
 
     def on_edit_annotation(self, buffer):
         assert len(self.keys) == 1
-        group = self.groups[self.keys[0]]
+        design = self.designs[self.keys[0]]
         bounds = buffer.get_bounds()
-        group.notes = buffer.get_text(*bounds)
+        design.notes = buffer.get_text(*bounds)
 
     def on_change_x_metric(self, widget):
         self.x_metric = widget.get_active_text()
@@ -679,11 +627,7 @@ class ModelView (gtk.Window):
         self.toolbar.home()
         self.normal_mode()
 
-    def filter_by(self, filter):
-        self.filter = filter
-        self.update_filter()
-
-    def next_group(self):
+    def next_design(self):
         selection = self.view.get_selection()
         model, paths = selection.get_selected_rows()
         num_paths = model.iter_n_children(None)
@@ -692,7 +636,7 @@ class ModelView (gtk.Window):
             selection.select_path(paths[-1][0] + 1)
             self.view.scroll_to_cell(paths[-1][0] + 1)
 
-    def previous_group(self):
+    def previous_design(self):
         selection = self.view.get_selection()
         model, paths = selection.get_selected_rows()
         if paths[0][0] > 0:
@@ -743,13 +687,13 @@ class ModelView (gtk.Window):
         response = chooser.run()
 
         if response == gtk.RESPONSE_OK:
-            selected_groups = [self.groups[key] for key in self.keys]
+            selected_designs = [self.designs[key] for key in self.keys]
             with open(chooser.get_filename(), 'w') as file:
                 file.writelines(
                         os.path.join(
-                            group.directory,
-                            group.paths[group.representative]) + '\n'
-                        for group in selected_groups)
+                            design.directory,
+                            design.paths[design.representative]) + '\n'
+                        for design in selected_designs)
 
         chooser.destroy()
 
@@ -757,7 +701,7 @@ class ModelView (gtk.Window):
         from matplotlib.backends.backend_pdf import PdfPages
         import matplotlib.pyplot as plt
 
-        selected_groups = [self.groups[key] for key in self.keys]
+        selected_designs = [self.designs[key] for key in self.keys]
 
         chooser = gtk.FileChooserDialog(
                 "Save interesting funnels",
@@ -775,11 +719,11 @@ class ModelView (gtk.Window):
         if response == gtk.RESPONSE_OK:
             pdf = PdfPages(chooser.get_filename())
 
-            for index, group in enumerate(selected_groups):
+            for index, design in enumerate(selected_designs):
                 plt.figure(figsize=(8.5, 11))
-                plt.suptitle(group.directory)
+                plt.suptitle(design.directory)
 
-                self.plot_models(plt.gca(), [group])
+                self.plot_models(plt.gca(), [design])
 
                 pdf.savefig()
                 plt.close()
@@ -788,11 +732,10 @@ class ModelView (gtk.Window):
 
         chooser.destroy()
 
-    def plot_models(self, axes, groups, **kwargs):
+    def plot_models(self, axes, designs, **kwargs):
         from itertools import count
 
         labels = kwargs.get('labels', None)
-        xlim = kwargs.get('xlim', self.xlim)
         x_metric = kwargs.get('x_metric', self.x_metric)
         y_metric = kwargs.get('y_metric', self.y_metric)
 
@@ -819,10 +762,10 @@ class ModelView (gtk.Window):
 
         # Plot the two axes.
 
-        for index, group in enumerate(groups):
-            rep = group.representative
-            x = group.get_metric(x_metric)
-            y = group.get_metric(y_metric)
+        for index, design in enumerate(designs):
+            rep = design.representative
+            x = design.get_metric(x_metric)
+            y = design.get_metric(y_metric)
             color = color_from_cycle(index)
             label = labels[index] if labels is not None else ''
             size = np.clip(7500 / (len(x)), 2, 15)
@@ -840,11 +783,11 @@ class ModelView (gtk.Window):
                     s=size, c=color, marker='o', edgecolor='none',
                     label=label, picker=True)
 
-            lines.paths = group.paths
-            lines.group = group
+            lines.paths = design.paths
+            lines.design = design
 
-        # Pick the axis limits based on the range of every group.  This is done 
-        # so you can scroll though every group without the axes changing size.
+        # Pick the axis limits based on the range of every design.  This is done 
+        # so you can scroll though every design without the axes changing size.
 
         def get_metric_limits(metric):
             values = np.concatenate([x.get_metric(metric) for x in self])
@@ -876,9 +819,9 @@ class ModelView (gtk.Window):
         if y_guide is not None:
             axes.axhline(y_guide, color='gray', linestyle='--')
 
-        # If between 1 and 5 groups are being shown, show a legend.
+        # If between 1 and 5 designs are being shown, show a legend.
 
-        if labels and 1 < len(groups) < 5:
+        if labels and 1 < len(designs) < 5:
             axes.legend()
 
 
@@ -888,14 +831,14 @@ class ModelView (gtk.Window):
         self.update_plot()
 
     def update_plot(self):
-        groups = [self.groups[k] for k in self.keys]
-        self.plot_models(self.axes, groups, labels=self.keys)
+        designs = [self.designs[k] for k in self.keys]
+        self.plot_models(self.axes, designs, labels=self.keys)
         self.canvas.draw()
 
     def update_annotations(self):
         if len(self.keys) == 1:
-            group = self.groups[self.keys[0]]
-            self.notes.get_buffer().set_text(group.notes)
+            design = self.designs[self.keys[0]]
+            self.notes.get_buffer().set_text(design.notes)
             self.notes.set_sensitive(True)
         else:
             self.notes.set_sensitive(False)
@@ -906,23 +849,23 @@ class ModelView (gtk.Window):
         selector = self.view.get_selection()
         model.clear()
 
-        def query_matches_group(group):
+        def query_matches_design(design):
             needle = self.search_form.get_text()
-            haystack = group.notes
+            haystack = design.notes
 
             if needle.islower():
                 haystack = haystack.lower()
 
             return needle in haystack
 
-        for key in sorted(self.groups):
-            if query_matches_group(self.groups[key]):
+        for key in sorted(self.designs):
+            if query_matches_design(self.designs[key]):
                 model.append([key])
 
         selector.select_path((0,))
 
 
-class ModelCanvas (FigureCanvasGTKAgg):
+class FigureCanvas (FigureCanvasGTKAgg):
 
     def __init__(self, figure):
         FigureCanvasGTKAgg.__init__(self, figure)
@@ -932,7 +875,7 @@ class ModelCanvas (FigureCanvasGTKAgg):
         return False
 
 
-class ModelToolbar (NavigationToolbar2GTKAgg):
+class NavigationToolbar (NavigationToolbar2GTKAgg):
 
     toolitems = ( # (fold)
         ('Home', 'Reset original view', 'home', 'home'),
@@ -1004,13 +947,13 @@ metric_guides = {
 }
 
 
-def load_models(directories, use_cache=True):
-    groups = collections.OrderedDict()
+def load_designs(directories, use_cache=True):
+    designs = collections.OrderedDict()
 
     for directory in directories:
-        groups[directory] = ModelGroup(directory, use_cache)
+        designs[directory] = Design(directory, use_cache)
 
-    return groups
+    return designs
 
 def parse_records_from_pdbs(pdb_paths):
     records = []
@@ -1083,18 +1026,17 @@ def try_to_run_command(command):
 def main():
     import docopt
     args = docopt.docopt(__doc__)
+    directories = args['<pdb_directories>']
 
     try:
-        groups = load_models(
-                args['<pdb_directories>'],
-                use_cache=not args['--force'])
+        designs = load_designs(directories, use_cache=not args['--force'])
     except IOError as error:
         print "Error:", error.message
         sys.exit()
 
-    if groups and not args['--quiet']:
+    if designs and not args['--quiet']:
         if not os.fork():
-            gui = ModelView(groups, xlim=args['--xlim'])
+            gui = ShowMyDesigns(designs)
             gtk.main()
 
 if __name__ == '__main__':
