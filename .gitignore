@@ -1,4 +1,5 @@
 *.pdb
 *.sho
+/profile.sh
 /demo_data
 /fast_demo_data
