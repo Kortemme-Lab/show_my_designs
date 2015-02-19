@@ -166,7 +166,7 @@ class Design (object):
             uncached_paths = pdb_paths
 
         # Calculate score and distance metrics for the uncached paths, then 
-        # combine the cached and uncached data into a single data frame
+        # combine the cached and uncached data into a single data frame.
 
         uncached_records = parse_records_from_pdbs(uncached_paths)
         self._models = pd.DataFrame(cached_records + uncached_records)
@@ -1018,10 +1018,7 @@ def try_to_run_command(command):
                     buttons=gtk.BUTTONS_OK,
             )
             message.set_markup("<b>Failed to run {}</b>".format(command[0]))
-            if not os.access(command[0], os.X_OK):
-                message.format_secondary_text("Make sure it is executable and try again.")
-            else:
-                message.format_secondary_text("Make sure it is properly installed and try again.")
+            message.format_secondary_text("Make sure it is properly installed and try again.")
             message.run()
             message.destroy()
 
