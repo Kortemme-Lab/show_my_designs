@@ -380,8 +380,8 @@ class ShowMyDesigns (gtk.Window):
         y_axis_menu = gtk.combo_box_new_text()
 
         for i, metric in enumerate(self.defined_metrics):
-            x_axis_menu.append_text(metric_titles[metric])
-            y_axis_menu.append_text(metric_titles[metric])
+            x_axis_menu.append_text(get_metric_title(metric))
+            y_axis_menu.append_text(get_metric_title(metric))
 
             if metric == self.x_metric: x_axis_menu.set_active(i)
             if metric == self.y_metric: y_axis_menu.set_active(i)
@@ -757,8 +757,8 @@ class ShowMyDesigns (gtk.Window):
         # Clear the axes and reset the axis labels
 
         axes.clear()
-        axes.set_xlabel(metric_titles[x_metric])
-        axes.set_ylabel(metric_titles[y_metric])
+        axes.set_xlabel(get_metric_title(x_metric))
+        axes.set_ylabel(get_metric_title(y_metric))
 
         # Plot the two axes.
 
@@ -899,7 +899,7 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
             combo_box.add_attribute(cell, 'text', 1)
 
             for i, metric in enumerate(parent.defined_metrics):
-                store.append([metric, metric_titles[metric]])
+                store.append([metric, get_metric_title(metric)])
                 if metric == initial_metric:
                     combo_box.set_active(i)
 
@@ -1021,6 +1021,12 @@ def try_to_run_command(command):
                 message.format_secondary_text("Make sure it is properly installed and try again.")
             message.run()
             message.destroy()
+
+def get_metric_title(metric):
+    naive_title = metric.title()
+    naive_title = naive_title.replace('_', ' ')
+    naive_title = naive_title.replace('-', ' ')
+    return metric_titles.get(metric, naive_title)
 
 
 def main():
