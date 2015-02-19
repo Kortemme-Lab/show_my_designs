@@ -233,14 +233,14 @@ class ShowMyDesigns (gtk.Window):
 
         self.defined_metrics = sorted(set.intersection(
                 *[x.defined_metrics for x in self]))
-        self.x_metric = self.defined_metrics[
-                self.defined_metrics.index('loop_rmsd')
-                if 'loop_rmsd' in self.defined_metrics
-                else 1]
-        self.y_metric = self.defined_metrics[
-                self.defined_metrics.index('total_score')
-                if 'total_score' in self.defined_metrics
-                else 0]
+        self.x_metric = (
+                default_x_metric
+                if default_x_metric in self.defined_metrics
+                else self.defined_metrics[1])
+        self.y_metric = (
+                default_y_metric
+                if default_y_metric in self.defined_metrics
+                else self.defined_metrics[1])
 
         # Setup the GUI.
 
@@ -946,6 +946,9 @@ metric_guides = {
         'loop_rmsd': 1.0,
 }
 
+
+default_x_metric = 'loop_rmsd'
+default_y_metric = 'total_score'
 
 def load_designs(directories, use_cache=True):
     designs = collections.OrderedDict()
