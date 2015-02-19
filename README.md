@@ -5,9 +5,9 @@ Most computational design pipelines have one step that searchs for sequences
 which satisfy the design goals and and another that simulates some of those 
 sequences to see which really do satisfy those goals.  This second step is 
 usually called forward-folding or computational validation.  For each design 
-chosen to be validated, hundreds of forward-folding simulations may be run.  
+chosen to be validated, hundreds of forward-folding simulations may be run. 
 Each of these produces a single model which can be characterized by metrics 
-expressing how realistic it is and how well it satisfies the design goals.  
+expressing how realistic it is and how well it satisfies the design goals. 
 These metrics include force-field scores, RMSDs to target structures, buried 
 unsatisfied H-bond counts, and possibly other things like that.  A design is 
 promising if the forward-folded models that best satisfy the design goals are 
@@ -39,7 +39,7 @@ required dependencies are present:
 - numexpr
 
 On linux, these most of these should already be installed, and all of these 
-should be available through whatever package manager your distribution uses.  
+should be available through whatever package manager your distribution uses. 
 On mac, homebrew seems to be the most promising route, but I haven't tried it.
 
 Bugs and New Features
@@ -90,7 +90,7 @@ each selected design on a separate page.
 The upper right area of the GUI will contain a plot with different metrics on 
 the two axes where each point represents a single model.  You can right-click 
 on any point to take an action on the model represented by that point.  Usually 
-this means visualizing the model in an external program, like pymol or chimera.  
+this means visualizing the model in an external program, like pymol or chimera. 
 You can also run your own custom scripts; see the "customization" section below 
 for more information.  
 
@@ -104,11 +104,11 @@ rank designs so I can easily search for increasingly good designs.
 Customization
 =============
 Because every protein design pipeline is different, show_my_designs was written 
-to be flexible.  Providing a new way to visualize specific models is trivial.  
+to be flexible.  Providing a new way to visualize specific models is trivial. 
 You just need to write a script with the extension '*.sho' that takes the path 
 of a model as its only argument.  show_my_designs will search for scripts with 
 this extension in every directory starting with the directory containing the 
-model in question and going down all the way to the root of the file system.  
+model in question and going down all the way to the root of the file system. 
 Any scripts that are found are added to the menu you get by right-clicking on a 
 point, using simple rules (first letter capitalized, '_'->' ') to convert the 
 file name into a menu item name.
@@ -123,7 +123,7 @@ show_my_designs.main() from your own script.
 This is more clear with an example.  Say your forward-folding simulation 
 outputs an auxiliary file for each model containing all sorts of metrics 
 relevant to your particular system.  You can add support for these metrics by 
-providing a new implementation of show_my_designs.parse_records_from_pdbs().  
+providing a new implementation of show_my_designs.parse_records_from_pdbs(). 
 This function takes a list of paths to PDB files that haven't been cached yet 
 and returns a list containing {'metric_name': metric_value} dictionaries for 
 each one.  The information in this list is cached so that it doesn't have to be 
@@ -137,14 +137,13 @@ dictionary for that model.
 
 Hotkeys
 =======
-j,f,down:   Select the next design, if there is one.
-k,d,up:     Select the previous design, if there is one.
-i,a:        Focus on the description form.
-z:          Use the mouse to zoom on a rectangle.
-x:          Use the mouse to pan (left-click) or zoom (right-click).
-c:          Return to the original plot view.
-slash:      Focus on the search bar.
-tab:        Change the y-axis metric.
-space:      Change the x-axis metric.
-escape:     Unfocus the search and description forms.
-
+- j,f,down:   Select the next design, if there is one.
+- k,d,up:     Select the previous design, if there is one.
+- i,a:        Focus on the description form.
+- z:          Use the mouse to zoom on a rectangle.
+- x:          Use the mouse to pan (left-click) or zoom (right-click).
+- c:          Return to the original plot view.
+- slash:      Focus on the search bar.
+- tab:        Change the y-axis metric.
+- space:      Change the x-axis metric.
+- escape:     Unfocus the search and description forms.
