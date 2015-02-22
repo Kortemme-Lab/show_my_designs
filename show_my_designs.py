@@ -1030,20 +1030,24 @@ def get_metric_title(metric):
 
 
 def main():
-    import docopt
-    args = docopt.docopt(__doc__)
-    directories = args['<pdb_directories>']
-
     try:
-        designs = load_designs(directories, use_cache=not args['--force'])
-    except IOError as error:
-        print "Error:", error.message
-        sys.exit()
+        import docopt
+        args = docopt.docopt(__doc__)
+        directories = args['<pdb_directories>']
 
-    if designs and not args['--quiet']:
-        if not os.fork():
-            gui = ShowMyDesigns(designs)
-            gtk.main()
+        try:
+            designs = load_designs(directories, use_cache=not args['--force'])
+        except IOError as error:
+            print "Error:", error.message
+            sys.exit()
+
+        if designs and not args['--quiet']:
+            if not os.fork():
+                gui = ShowMyDesigns(designs)
+                gtk.main()
+
+    except KeyboardInterrupt:
+        print
 
 if __name__ == '__main__':
     main()
