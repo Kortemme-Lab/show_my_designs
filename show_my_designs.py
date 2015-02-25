@@ -1010,7 +1010,7 @@ def parse_record_from_pdb(record, pdb_path, lines):
 def try_to_run_command(command):
     with open(os.devnull, 'w') as devnull:
         try: subprocess.Popen(command, stdout=devnull)
-        except OSError:
+        except OSError as error:
             message = gtk.MessageDialog(
                     parent=None, 
                     flags=0, 
@@ -1018,7 +1018,7 @@ def try_to_run_command(command):
                     buttons=gtk.BUTTONS_OK,
             )
             message.set_markup("<b>Failed to run {}</b>".format(command[0]))
-            message.format_secondary_text("Make sure it is properly installed and try again.")
+            message.format_secondary_text(str(error))
             message.run()
             message.destroy()
 
