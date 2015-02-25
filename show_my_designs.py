@@ -251,15 +251,15 @@ class ShowMyDesigns (gtk.Window):
         model_viewer = self.setup_model_viewer()
         #model_viewer.set_size_request(529, 529)
 
-        hbox = gtk.HBox()
         if len(designs) > 1:
-            hbox.pack_start(model_list, expand=False, padding=3)
-        hbox.pack_start(model_viewer, expand=True, padding=3)
+            widgets = gtk.HPaned()
+            widgets.add1(model_list)
+            widgets.add2(model_viewer)
+        else:
+            widgets = model_viewer
 
-        vbox = gtk.VBox()
-        vbox.pack_start(hbox, expand=True, padding=3)
-
-        self.add(vbox)
+        self.add(widgets)
+        self.set_border_width(3)
         self.update_everything()
         self.show_all()
         self.set_focus(None)
@@ -314,7 +314,7 @@ class ShowMyDesigns (gtk.Window):
         selector.set_mode(gtk.SELECTION_MULTIPLE)
 
         scroller = gtk.ScrolledWindow()
-        scroller.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scroller.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scroller.add(self.view)
 
         frame = gtk.Frame()
