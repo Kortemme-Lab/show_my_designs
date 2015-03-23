@@ -430,8 +430,6 @@ class ShowMyDesigns (gtk.Window):
         if event.state & gtk.gdk.SHIFT_MASK: key = 'shift-' + key
     
         hotkeys = {
-                'tab': self.cycle_y_metric,
-                'space': self.cycle_x_metric,
                 'escape': self.normal_mode,
         }
         normal_mode_hotkeys = {
@@ -439,6 +437,8 @@ class ShowMyDesigns (gtk.Window):
                 'z': self.zoom_mode,
                 'x': self.pan_mode,
                 'c': self.refocus_plot,
+                'tab': self.cycle_y_metric,
+                'space': self.cycle_x_metric,
         }
         multi_design_hotkeys = {
                 'j': self.next_design,     'f': self.next_design,
@@ -1038,8 +1038,11 @@ def main():
         try:
             designs = load_designs(directories, use_cache=not args['--force'])
         except IOError as error:
-            print "Error:", error.message
-            sys.exit()
+            if str(error):
+                print "Error:", str(error)
+                sys.exit()
+            else:
+                raise
 
         if designs and not args['--quiet']:
             if not os.fork():
