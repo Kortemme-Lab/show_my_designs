@@ -224,6 +224,8 @@ class ShowMyDesigns (gtk.Window):
         gtk.Window.__init__(self)
         self.add_events(gtk.gdk.KEY_PRESS_MASK)
         self.connect('key-press-event', self.on_hotkey_press)
+        self.set_icon_from_file(os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), 'icon.png'))
 
         # Setup the data members.
 
