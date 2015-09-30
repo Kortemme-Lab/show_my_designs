@@ -822,7 +822,7 @@ class ShowMyDesigns (gtk.Window):
         # If between 1 and 5 designs are being shown, show a legend.
 
         if labels and 1 < len(designs) < 5:
-            axes.legend()
+            axes.legend(loc='upper right')
 
 
     def update_everything(self):
