@@ -430,8 +430,6 @@ class ShowMyDesigns (gtk.Window):
         if event.state & gtk.gdk.SHIFT_MASK: key = 'shift-' + key
     
         hotkeys = {
-                'tab': self.cycle_y_metric,
-                'space': self.cycle_x_metric,
                 'escape': self.normal_mode,
         }
         normal_mode_hotkeys = {
@@ -439,6 +437,8 @@ class ShowMyDesigns (gtk.Window):
                 'z': self.zoom_mode,
                 'x': self.pan_mode,
                 'c': self.refocus_plot,
+                'tab': self.cycle_y_metric,
+                'space': self.cycle_x_metric,
         }
         multi_design_hotkeys = {
                 'j': self.next_design,     'f': self.next_design,
@@ -480,6 +480,16 @@ class ShowMyDesigns (gtk.Window):
         for key in new_keys:
             if key not in self.keys:
                 self.keys.append(key)
+
+        # Rename the window based on the current selection.
+
+        subtitle = ""
+        if len(self.keys) == 1:
+            subtitle = " ({})".format(self.keys[0])
+        if len(self.keys) > 1:
+            subtitle = " ({}, ...)".format(self.keys[0])
+
+        self.set_title("Show My Designs" + subtitle)
 
         # This is an efficiency thing.  The 'J' and 'K' hotkeys works in two 
         # steps: first unselect everything and then select the next row in 
@@ -1038,8 +1048,11 @@ def main():
         try:
             designs = load_designs(directories, use_cache=not args['--force'])
         except IOError as error:
-            print "Error:", error.message
-            sys.exit()
+            if str(error):
+                print "Error:", str(error)
+                sys.exit()
+            else:
+                raise
 
         if designs and not args['--quiet']:
             if not os.fork():
