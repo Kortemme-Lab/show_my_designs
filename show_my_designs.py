@@ -481,6 +481,16 @@ class ShowMyDesigns (gtk.Window):
             if key not in self.keys:
                 self.keys.append(key)
 
+        # Rename the window based on the current selection.
+
+        subtitle = ""
+        if len(self.keys) == 1:
+            subtitle = " ({})".format(self.keys[0])
+        if len(self.keys) > 1:
+            subtitle = " ({}, ...)".format(self.keys[0])
+
+        self.set_title("Show My Designs" + subtitle)
+
         # This is an efficiency thing.  The 'J' and 'K' hotkeys works in two 
         # steps: first unselect everything and then select the next row in 
         # order.  Redrawing the plot is expensive, so it's worthwhile to skip 
