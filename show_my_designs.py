@@ -5,7 +5,7 @@
 Judge forward-folded candidates in computational protein design pipelines.
 
 Usage:
-    show_me_pdbs.py [options] <pdb_directories>...
+    show_my_designs.py [options] <pdb_directories>...
 
 Options:
     -f, --force
