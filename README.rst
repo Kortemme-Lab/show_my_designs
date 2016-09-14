@@ -1,3 +1,5 @@
+Show My Designs
+===============
 The purpose of this program is to make it easier to judge forward-folded 
 candidates in computational protein design pipelines.
 
@@ -27,7 +29,7 @@ find promising designs:
    want to visualize.
 
 Installation
-============
+------------
 The most difficult part of installing show_my_designs is making sure all the 
 required dependencies are present:
 
@@ -43,7 +45,7 @@ should be available through whatever package manager your distribution uses.
 On mac, homebrew seems to be the most promising route, but I haven't tried it.
 
 Bugs and New Features
-=====================
+---------------------
 If you find a bug, open an issue through the github interface::
 
     https://github.com/Kortemme-Lab/show_my_designs/issues
@@ -54,7 +56,7 @@ and make a pull request::
     https://github.com/Kortemme-Lab/show_my_designs/fork
 
 Usage
-=====
+-----
 Use the `-h` flag to get help on using ``show_my_designs``:
 
     $ ./show_my_designs.py -h
@@ -102,7 +104,7 @@ descriptions can be searched.  I like using the '+', '++', ... convention to
 rank designs so I can easily search for increasingly good designs.
 
 Customization
-=============
+-------------
 Because every protein design pipeline is different, ``show_my_designs`` was 
 written to be flexible.  Providing a new way to visualize specific models is 
 trivial. You just need to write a script with the extension ``*.sho`` that 
@@ -137,7 +139,7 @@ in a specific PDB file.  It is expected to return the ``{'metric_name':
 metric_value}`` dictionary for that model.
 
 Hotkeys
-=======
+-------
 - j,f,down:   Select the next design, if there is one.
 - k,d,up:     Select the previous design, if there is one.
 - i,a:        Focus on the description form.
