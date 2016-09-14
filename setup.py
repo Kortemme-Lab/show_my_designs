@@ -26,12 +26,14 @@ setup(
         'show_my_designs.png',
     ],
     install_requires=[
+        #'pygtk',
         'docopt',
         'pyyaml',
         'matplotlib',
         'numpy',
         'scipy',
         'pandas',
+        'numexpr',
     ],
     entry_points = {
         'console_scripts': ['show_my_designs=show_my_designs:main'],
