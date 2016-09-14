@@ -41,6 +41,7 @@ __version__ = '1.0.1'
 __author__ = 'Kale Kundert'
 __email__ = 'kale.kundert@ucsf.edu'
 
+
 class Design (object):
 
     def __init__(self, directory, use_cache=True):
