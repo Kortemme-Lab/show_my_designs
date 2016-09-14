@@ -1,8 +1,8 @@
 The purpose of this program is to make it easier to judge forward-folded 
 candidates in computational protein design pipelines.
 
-Most computational design pipelines have one step that searchs for sequences 
-which satisfy the design goals and and another that simulates some of those 
+Most computational design pipelines have one step that searches for sequences 
+which satisfy the design goals and another that simulates some of those 
 sequences to see which really do satisfy those goals.  This second step is 
 usually called forward-folding or computational validation.  For each design 
 chosen to be validated, hundreds of forward-folding simulations may be run. 
@@ -46,16 +46,16 @@ Bugs and New Features
 =====================
 If you find a bug, open an issue through the github interface::
 
-    https://github.com/Kortemme-Lab/show_me_pdbs/issues
+    https://github.com/Kortemme-Lab/show_my_designs/issues
 
 If you'd like to fix a bug or make an improvement to the code, fork the project 
 and make a pull request::
 
-    https://github.com/Kortemme-Lab/show_me_pdbs/fork
+    https://github.com/Kortemme-Lab/show_my_designs/fork
 
 Usage
 =====
-Use the `-h` flag to get help on using show_my_designs:
+Use the `-h` flag to get help on using ``show_my_designs``:
 
     $ ./show_my_designs.py -h
     Usage: ...
@@ -103,37 +103,38 @@ rank designs so I can easily search for increasingly good designs.
 
 Customization
 =============
-Because every protein design pipeline is different, show_my_designs was written 
-to be flexible.  Providing a new way to visualize specific models is trivial. 
-You just need to write a script with the extension '*.sho' that takes the path 
-of a model as its only argument.  show_my_designs will search for scripts with 
-this extension in every directory starting with the directory containing the 
-model in question and going down all the way to the root of the file system. 
-Any scripts that are found are added to the menu you get by right-clicking on a 
-point, using simple rules (first letter capitalized, '_'->' ') to convert the 
-file name into a menu item name.
+Because every protein design pipeline is different, ``show_my_designs`` was 
+written to be flexible.  Providing a new way to visualize specific models is 
+trivial. You just need to write a script with the extension ``*.sho`` that 
+takes the path of a model as its only argument.  ``show_my_designs`` will 
+search for scripts with this extension in every directory starting with the 
+directory containing the model in question and going down all the way to the 
+root of the file system. Any scripts that are found are added to the menu you 
+get by right-clicking on a point, using simple rules (the first letter is 
+capitalized and underscores are converted to spaces) to convert the file name 
+into a menu item name.
 
 Another common modification is to change what metrics are extracted for each 
-model.  By default, only the metrics that outputed by rosetta's loop modeling 
+model.  By default, only the metrics that outputted by rosetta's loop modeling 
 framework are extracted.  The metrics include: the rosetta fullatom score, the 
 RMSD to the native backbone, and the number of buried unsatisfied H-bonds.  To 
-add new metrics, you have to monkey-patch the show_my_designs module and call 
-show_my_designs.main() from your own script.
+add new metrics, you have to monkey-patch the ``show_my_designs`` module and 
+call ``show_my_designs.main()`` from your own script.
 
 This is more clear with an example.  Say your forward-folding simulation 
 outputs an auxiliary file for each model containing all sorts of metrics 
 relevant to your particular system.  You can add support for these metrics by 
-providing a new implementation of show_my_designs.parse_records_from_pdbs(). 
-This function takes a list of paths to PDB files that haven't been cached yet 
-and returns a list containing {'metric_name': metric_value} dictionaries for 
-each one.  The information in this list is cached so that it doesn't have to be 
+reimplementing ``show_my_designs.parse_records_from_pdbs()``. This function 
+takes a list of paths to PDB files that haven't been cached yet and returns a 
+list containing ``{'metric_name': metric_value}`` dictionaries for each one.  
+The information in this list is cached so that it doesn't have to be 
 regenerated unless necessary.
 
 If your custom metrics are encoded in the PDB file itself, you can reimplement 
-show_my_designs.parse_record_from_pdb() instead.  This function is called by 
-show_my_designs.parse_records_from_pdbs() and with a list of the lines in a 
-specific PDB file.  It is expected to return the {'metric_name': metric_value} 
-dictionary for that model.
+``show_my_designs.parse_record_from_pdb()`` instead.  This function is called 
+by ``show_my_designs.parse_records_from_pdbs()`` and with a list of the lines 
+in a specific PDB file.  It is expected to return the ``{'metric_name': 
+metric_value}`` dictionary for that model.
 
 Hotkeys
 =======

@@ -28,27 +28,18 @@ Features:
 """
 
 ## Imports
-import collections
-import glob
-import gzip
-import os
-import pango
-import re
-import shutil
-import subprocess
-import sys
-import yaml
-
-import gtk
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import scipy as sp
+import collections, glob, gzip, os, re, shutil, subprocess, sys
+import gtk, pango, yaml
+import matplotlib.pyplot as plt, numpy as np, scipy as sp, pandas as pd
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
 from matplotlib.backends.backend_gtkagg import NavigationToolbar2GTKAgg
 
+## Package Metadata
+__version__ = '1.0.0'
+__author__ = 'Kale Kundert'
+__email__ = 'kale.kundert@ucsf.edu'
 
 class Design (object):
 
@@ -225,7 +216,7 @@ class ShowMyDesigns (gtk.Window):
         self.add_events(gtk.gdk.KEY_PRESS_MASK)
         self.connect('key-press-event', self.on_hotkey_press)
         self.set_icon_from_file(os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), 'icon.png'))
+            os.path.dirname(os.path.realpath(__file__)), 'show_my_designs.png'))
 
         # Setup the data members.
 
@@ -1064,5 +1055,3 @@ def main():
     except KeyboardInterrupt:
         print
 
-if __name__ == '__main__':
-    main()
