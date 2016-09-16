@@ -12,7 +12,7 @@ with open('README.rst') as file:
 
 setup(
     name='show_my_designs',
-    version='1.0.1',
+    version='1.1.0',
     author='Kale Kundert',
     author_email='kale.kundert@ucsf.edu',
     url='https://github.com/Kortemme-Lab/show_my_designs',
