@@ -954,6 +954,25 @@ metric_guides = {
 default_x_metric = 'loop_rmsd'
 default_y_metric = 'total_score'
 
+def show_my_designs(directories, use_cache=True, launch_gui=True):
+    try:
+        try:
+            designs = load_designs(directories, use_cache=use_cache)
+        except IOError as error:
+            if str(error):
+                print "Error:", str(error)
+                sys.exit()
+            else:
+                raise
+
+        if designs and launch_gui:
+            if not os.fork():
+                gui = ShowMyDesigns(designs)
+                gtk.main()
+
+    except KeyboardInterrupt:
+        print
+
 def load_designs(directories, use_cache=True):
     designs = collections.OrderedDict()
 
@@ -1034,25 +1053,11 @@ def get_metric_title(metric):
 
 
 def main():
-    try:
-        import docopt
-        args = docopt.docopt(__doc__)
-        directories = args['<pdb_directories>']
-
-        try:
-            designs = load_designs(directories, use_cache=not args['--force'])
-        except IOError as error:
-            if str(error):
-                print "Error:", str(error)
-                sys.exit()
-            else:
-                raise
-
-        if designs and not args['--quiet']:
-            if not os.fork():
-                gui = ShowMyDesigns(designs)
-                gtk.main()
-
-    except KeyboardInterrupt:
-        print
+    import docopt
+    args = docopt.docopt(__doc__)
+    show_my_designs(
+            args['<pdb_directories>'],
+            use_cache=not args['--force'],
+            lauch_gui=not args['--quiet'],
+    )
 
