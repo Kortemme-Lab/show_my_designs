@@ -38,5 +38,4 @@ setup(
     entry_points = {
         'console_scripts': ['show_my_designs=show_my_designs:main'],
     },
-
 )
