@@ -8,6 +8,9 @@ Usage:
     show_my_designs.py [options] <pdb_directories>...
 
 Options:
+    -F, --no-fork
+        Do not fork into a background process.
+
     -f, --force
         Force the cache to be regenerated.
 
@@ -954,7 +957,7 @@ metric_guides = {
 default_x_metric = 'loop_rmsd'
 default_y_metric = 'total_score'
 
-def show_my_designs(directories, use_cache=True, launch_gui=True):
+def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True):
     try:
         try:
             designs = load_designs(directories, use_cache=use_cache)
@@ -966,7 +969,7 @@ def show_my_designs(directories, use_cache=True, launch_gui=True):
                 raise
 
         if designs and launch_gui:
-            if not os.fork():
+            if not fork_gui or not os.fork():
                 gui = ShowMyDesigns(designs)
                 gtk.main()
 
@@ -1058,6 +1061,7 @@ def main():
     show_my_designs(
             args['<pdb_directories>'],
             use_cache=not args['--force'],
-            lauch_gui=not args['--quiet'],
+            launch_gui=not args['--quiet'],
+            fork_gui=not args['--no-fork'],
     )
 
