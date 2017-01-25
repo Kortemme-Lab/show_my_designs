@@ -969,9 +969,17 @@ def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True)
                 raise
 
         if designs and launch_gui:
-            if not fork_gui or not os.fork():
-                gui = ShowMyDesigns(designs)
-                gtk.main()
+            # If the user wants to run in a background process, try to fork.  
+            # But for some reason fork() doesn't seem to work on Macs, so just 
+            # run the GUI in the main process if anything goes wrong.
+            try:
+                if fork_gui and os.fork():
+                    sys.exit()
+            except Exception:
+                pass
+
+            gui = ShowMyDesigns(designs)
+            gtk.main()
 
     except KeyboardInterrupt:
         print
