@@ -40,7 +40,7 @@ from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
 from matplotlib.backends.backend_gtkagg import NavigationToolbar2GTKAgg
 
 ## Package Metadata
-__version__ = '1.1.1'
+__version__ = '1.2.0'
 __author__ = 'Kale Kundert'
 __email__ = 'kale.kundert@ucsf.edu'
 
