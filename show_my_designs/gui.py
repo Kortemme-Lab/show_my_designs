@@ -973,7 +973,7 @@ def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True)
             # run the GUI in the main process if anything goes wrong.
             try:
                 if fork_gui and os.fork():
-                    os._exit()
+                    sys.exit()
             except Exception:
                 pass
 
