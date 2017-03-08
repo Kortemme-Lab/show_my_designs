@@ -6,6 +6,7 @@ Judge forward-folded candidates in computational protein design pipelines.
 
 Usage:
     show_my_designs.py [options] <pdb_directories>...
+    show_my_designs.py --version
 
 Options:
     -F, --no-fork
@@ -16,6 +17,9 @@ Options:
 
     -q, --quiet
         Build the cache, but don't launch the GUI.
+
+    -v, --version
+        Print the version number and exit.
 
 Features:
     1. Extract quality metrics from forward-folded models and plot them against 
@@ -969,7 +973,7 @@ def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True)
             # run the GUI in the main process if anything goes wrong.
             try:
                 if fork_gui and os.fork():
-                    sys.exit()
+                    os._exit()
             except Exception:
                 pass
 
@@ -1061,6 +1065,13 @@ def get_metric_title(metric):
 def main():
     import docopt
     args = docopt.docopt(__doc__)
+
+    if args['--version']:
+        from show_my_designs import __version__
+        print '{0} {1} (python {2[0]}.{2[1]})'.format(
+                os.path.basename(sys.argv[0]), __version__, sys.version_info)
+        raise SystemExit
+
     show_my_designs(
             args['<pdb_directories>'],
             use_cache=not args['--force'],
