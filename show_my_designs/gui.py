@@ -512,9 +512,14 @@ class ShowMyDesigns (gtk.Window):
         pass
 
     def on_click_plot_gtk(self, widget, event):
-        # Ignore any event that isn't a right button click.
+        # Ignore any event that isn't a right button click or a left button 
+        # click with the control key held down.
 
-        if event.button != 3: return
+        is_right_click = \
+                (event.button == 3) or \
+                (event.button == 1 and event.get_state() & gtk.gdk.CONTROL_MASK)
+
+        if not is_right_click: return
         if self.toolbar._active == 'PAN': return
         if self.toolbar._active == 'ZOOM': return
         if self.selected_model is None: return
