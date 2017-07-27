@@ -22,15 +22,15 @@ Options:
         Print the version number and exit.
 
 Features:
-    1. Extract quality metrics from forward-folded models and plot them against 
+    1. Extract quality metrics from forward-folded models and plot them against
        each other in any combination.
 
-    2. Easily visualize specific models by right-clicking on plotted points.  
+    2. Easily visualize specific models by right-clicking on plotted points.
        Add your own visualizations by writing `*.sho' scripts.
 
     3. Plot multiple designs at once, for comparison purposes.
 
-    4. Keep notes on each design, and search your notes to find the designs you 
+    4. Keep notes on each design, and search your notes to find the designs you
        want to visualize.
 """
 
@@ -112,8 +112,8 @@ class Design (object):
 
     @property
     def defined_metrics(self):
-        # This method returns the names of any column in self._models that 
-        # contains numeric data.  Any dtype other than 'object' is assumed to 
+        # This method returns the names of any column in self._models that
+        # contains numeric data.  Any dtype other than 'object' is assumed to
         # be numeric.
         return {x for x in self._models.keys()
                 if self._models[x].dtype != 'object'}
@@ -121,15 +121,15 @@ class Design (object):
 
     def _load_models(self, use_cache):
         """
-        Load a variety of score and distance metrics for the structures found 
-        in the given directory.  As much information as possible will be 
-        cached.  Note that new information will only be calculated for file 
-        names that haven't been seen before.  If a file changes or is deleted, 
-        the cache will not be updated to reflect this and you may be presented 
+        Load a variety of score and distance metrics for the structures found
+        in the given directory.  As much information as possible will be
+        cached.  Note that new information will only be calculated for file
+        names that haven't been seen before.  If a file changes or is deleted,
+        the cache will not be updated to reflect this and you may be presented
         with stale data.
         """
 
-        # Make sure the given directory matches all of our expectations: i.e.  
+        # Make sure the given directory matches all of our expectations: i.e.
         # that it exists and contains PDB files.
 
         if not os.path.exists(self.directory):
@@ -141,7 +141,7 @@ class Design (object):
         if not glob.glob(os.path.join(self.directory, '*.pdb*')):
             raise IOError("'{}' doesn't contain any PDB files".format(self.directory))
 
-        # Find all the structures in the given directory, then decide which 
+        # Find all the structures in the given directory, then decide which
         # have already been cached and which haven't.
 
         pdb_paths = glob.glob(os.path.join(self.directory, '*.pdb*'))
@@ -159,13 +159,13 @@ class Design (object):
             cached_records = []
             uncached_paths = pdb_paths
 
-        # Calculate score and distance metrics for the uncached paths, then 
+        # Calculate score and distance metrics for the uncached paths, then
         # combine the cached and uncached data into a single data frame.
 
         uncached_records = parse_records_from_pdbs(uncached_paths)
         self._models = pd.DataFrame(cached_records + uncached_records)
 
-        # Make sure at least two metrics have been associated with each model 
+        # Make sure at least two metrics have been associated with each model
         # in this directory.
 
         if len(self.defined_metrics) == 0:
@@ -174,7 +174,7 @@ class Design (object):
             defined_metric = self.defined_metrics.pop()
             raise IOError("only found one metric '{}' for the models in '{}', need at least two".format(defined_metric, self.directory))
 
-        # If everything else looks good, cache the data frame so we can load 
+        # If everything else looks good, cache the data frame so we can load
         # faster next time.
 
         if not self._models.empty:
@@ -212,9 +212,10 @@ class Design (object):
 class ShowMyDesigns (gtk.Window):
 
     def __init__(self, designs):
-        
-        # Setup the parent class.
 
+        # Setup the parent class.
+        self.filter_dict = {}
+        self.hidden_designs = {}
         gtk.Window.__init__(self)
         self.add_events(gtk.gdk.KEY_PRESS_MASK)
         self.connect('key-press-event', self.on_hotkey_press)
@@ -237,11 +238,15 @@ class ShowMyDesigns (gtk.Window):
                 default_y_metric
                 if default_y_metric in self.defined_metrics
                 else self.defined_metrics[1])
+        self.filter_metric = (
+                default_filter_metric
+                if default_filter_metric in self.defined_metrics
+                else self.defined_metrics[1])
 
         # Setup the GUI.
 
         self.connect('destroy', lambda x: gtk.main_quit())
-        self.set_default_size(int(1.618 * 529), 529)
+        self.set_default_size(int(1.618 * 630), 630)
 
         model_list = self.setup_model_list()
         model_viewer = self.setup_model_viewer()
@@ -371,19 +376,23 @@ class ShowMyDesigns (gtk.Window):
         self.toolbar = NavigationToolbar(self.canvas, self)
 
         # Create the axis menus.
-        
+
         x_axis_menu = gtk.combo_box_new_text()
         y_axis_menu = gtk.combo_box_new_text()
+        filter_menu = gtk.combo_box_new_text()
+        filter_options = gtk.combo_box_new_text()
 
         for i, metric in enumerate(self.defined_metrics):
             x_axis_menu.append_text(get_metric_title(metric))
             y_axis_menu.append_text(get_metric_title(metric))
+            filter_menu.append_text(get_metric_title(metric))
 
             if metric == self.x_metric: x_axis_menu.set_active(i)
             if metric == self.y_metric: y_axis_menu.set_active(i)
 
         x_axis_menu.connect('changed', self.on_change_x_metric)
         y_axis_menu.connect('changed', self.on_change_y_metric)
+
 
         # Place all the widgets.
 
@@ -422,9 +431,9 @@ class ShowMyDesigns (gtk.Window):
 
     def on_hotkey_press(self, widget, event):
         key = gtk.gdk.keyval_name(event.keyval).lower()
-        if event.state & gtk.gdk.CONTROL_MASK: key = 'ctrl-' + key
-        if event.state & gtk.gdk.SHIFT_MASK: key = 'shift-' + key
-    
+        #if event.state & gtk.gdk.CONTROL_MASK: key = 'ctrl-' + key
+        #if event.state & gtk.gdk.SHIFT_MASK: key = 'shift-' + key
+
         hotkeys = {
                 'escape': self.normal_mode,
         }
@@ -465,8 +474,8 @@ class ShowMyDesigns (gtk.Window):
             key = model.get_value(iter, 0)
             new_keys.append(key)
 
-        # Don't change the order of designs that were already selected.  The 
-        # order affects how the color of the design in the score vs rmsd plot, 
+        # Don't change the order of designs that were already selected.  The
+        # order affects how the color of the design in the score vs rmsd plot,
         # and things get confusing if it changes.
 
         for key in old_keys:
@@ -487,9 +496,9 @@ class ShowMyDesigns (gtk.Window):
 
         self.set_title("Show My Designs" + subtitle)
 
-        # This is an efficiency thing.  The 'J' and 'K' hotkeys works in two 
-        # steps: first unselect everything and then select the next row in 
-        # order.  Redrawing the plot is expensive, so it's worthwhile to skip 
+        # This is an efficiency thing.  The 'J' and 'K' hotkeys works in two
+        # steps: first unselect everything and then select the next row in
+        # order.  Redrawing the plot is expensive, so it's worthwhile to skip
         # redrawing after that first step.
 
         if self.keys:
@@ -501,7 +510,7 @@ class ShowMyDesigns (gtk.Window):
 
     def on_move_mouse_mpl(self, event):
         if event.xdata is None or event.ydata is None:
-            # The data coordinates will be None only if the mouse is outside 
+            # The data coordinates will be None only if the mouse is outside
             # the data area.
             self.mouse_position.set_text("")
         else:
@@ -512,7 +521,7 @@ class ShowMyDesigns (gtk.Window):
         pass
 
     def on_click_plot_gtk(self, widget, event):
-        # Ignore any event that isn't a right button click or a left button 
+        # Ignore any event that isn't a right button click or a left button
         # click with the control key held down.
 
         is_right_click = \
@@ -531,11 +540,11 @@ class ShowMyDesigns (gtk.Window):
         is_rep = (design.representative == index)
         self.selected_model = None
 
-        # Search for scripts that can perform some action using the clicked 
-        # model.  Such scripts must have the `*.sho' suffix and may be located 
-        # anywhere from the directory containing the models to any directory 
-        # below that.  Any scripts that are found will be used to populate a 
-        # drop-down menu.  If selected, the script will be called with sh as 
+        # Search for scripts that can perform some action using the clicked
+        # model.  Such scripts must have the `*.sho' suffix and may be located
+        # anywhere from the directory containing the models to any directory
+        # below that.  Any scripts that are found will be used to populate a
+        # drop-down menu.  If selected, the script will be called with sh as
         # the interpreter and the path to the model as the singular argument.
 
         directory = os.path.abspath(design.directory)
@@ -612,7 +621,6 @@ class ShowMyDesigns (gtk.Window):
         self.y_metric = widget.get_active_text()
         self.update_plot()
 
-
     def normal_mode(self):
         self.set_focus(None)
 
@@ -660,13 +668,20 @@ class ShowMyDesigns (gtk.Window):
         i = (i + 1) % len(self.defined_metrics)
         if self.defined_metrics[i] == self.y_metric:
             i = (i + 1) % len(self.defined_metrics)
-        
-        # Change the axis by programmatically selecting a new entry in the 
-        # corresponding drop-down menu in the toolbar.  This is incredibly 
-        # roundabout (and it kinda breaks encapsulation, although I consider 
-        # ModelViewer and ModelToolbar to be friends), but it's the only way I 
+
+        # Change the axis by programmatically selecting a new entry in the
+        # corresponding drop-down menu in the toolbar.  This is incredibly
+        # roundabout (and it kinda breaks encapsulation, although I consider
+        # ModelViewer and ModelToolbar to be friends), but it's the only way I
         # know to keep the drop-down menu in sync.
 
+        self.toolbar.x_axis_menu.set_active(i)
+
+    def reverse_cycle_x_metric(self):
+        i = self.defined_metrics.index(self.x_metric)
+        i = (i - 1) % len(self.defined_metrics)
+        if self.defined_metrics[i] == self.y_metric:
+            i = (i - 1) % len(self.defined_metrics)
         self.toolbar.x_axis_menu.set_active(i)
 
     def cycle_y_metric(self):
@@ -675,12 +690,19 @@ class ShowMyDesigns (gtk.Window):
         if self.defined_metrics[i] == self.x_metric:
             i = (i + 1) % len(self.defined_metrics)
 
-        # Change the axis by programmatically selecting a new entry in the 
-        # corresponding drop-down menu in the toolbar.  This is incredibly 
-        # roundabout (and it kinda breaks encapsulation, although I consider 
-        # ModelViewer and ModelToolbar to be friends), but it's the only way I 
+        # Change the axis by programmatically selecting a new entry in the
+        # corresponding drop-down menu in the toolbar.  This is incredibly
+        # roundabout (and it kinda breaks encapsulation, although I consider
+        # ModelViewer and ModelToolbar to be friends), but it's the only way I
         # know to keep the drop-down menu in sync.
 
+        self.toolbar.y_axis_menu.set_active(i)
+
+    def reverse_cycle_y_metric(self):
+        i = self.defined_metrics.index(self.y_metric)
+        i = (i - 1) % len(self.defined_metrics)
+        if self.defined_metrics[i] == self.x_metric:
+            i = (i - 1) % len(self.defined_metrics)
         self.toolbar.y_axis_menu.set_active(i)
 
     def save_interesting_paths(self):
@@ -774,18 +796,39 @@ class ShowMyDesigns (gtk.Window):
         # Plot the two axes.
 
         for index, design in enumerate(designs):
-            rep = design.representative
-            x = design.get_metric(x_metric)
-            y = design.get_metric(y_metric)
+            representative = design.representative
+            x_list = design.get_metric(x_metric)
+            y_list = design.get_metric(y_metric)
             color = color_from_cycle(index)
             label = labels[index] if labels is not None else ''
-            size = np.clip(7500 / (len(x)), 2, 15)
+
+            hide_indices = []
+            y = []
+            x = []
+            rep = representative
+            if self.hidden_designs != {}:
+                for i, val in enumerate(x_list):
+                    for key in self.hidden_designs:
+                        if i in self.hidden_designs[key][design]:
+                            hide_indices.append(i)
+
+                for index, value in enumerate(x_list):
+                    if index not in hide_indices:
+                        x.append(x_list[index])
+                        y.append(y_list[index])
+                        if index == representative:
+                            rep = len(x) - 1
+
+            else:
+                x = x_list
+                y = y_list
+            size = np.clip(7500 / max(len(x),1), 2, 15)
 
             # Highlight the representative model.
-
-            axes.scatter(
-                    [x[rep]], [y[rep]],
-                    s=60, c=yellow[1], marker='o', edgecolor='none')
+            if representative not in hide_indices:
+                axes.scatter(
+                        [x[rep]], [y[rep]],
+                        s=60, c=yellow[1], marker='o', edgecolor='none')
 
             # Draw the whole score vs distance plot.
 
@@ -797,7 +840,7 @@ class ShowMyDesigns (gtk.Window):
             lines.paths = design.paths
             lines.design = design
 
-        # Pick the axis limits based on the range of every design.  This is done 
+        # Pick the axis limits based on the range of every design.  This is done
         # so you can scroll though every design without the axes changing size.
 
         def get_metric_limits(metric):
@@ -853,7 +896,7 @@ class ShowMyDesigns (gtk.Window):
             self.notes.set_sensitive(True)
         else:
             self.notes.set_sensitive(False)
-        
+
 
     def update_filter(self):
         model = self.view.get_model()
@@ -875,6 +918,62 @@ class ShowMyDesigns (gtk.Window):
 
         selector.select_path((0,))
 
+    def hide_designs(self,filter_number):
+        filter_parameters = self.filter_dict[filter_number]
+        filter_metric = filter_parameters[0].get_active_text()
+        filter_option = filter_parameters[1].get_active_text()
+        filter_input = float(filter_parameters[2].get_text())
+
+        designs = self.designs
+        for key in designs:
+            design = designs[key]
+            self.tempcount = 0
+            self.hidden_designs[filter_number][design] = []
+            for index, value in enumerate(design.get_metric(filter_metric)):
+                if self.passes_filter(value,filter_option,filter_input) == False:
+                    self.hidden_designs[filter_number][design].append(index)
+        self.update_plot()
+
+
+    def passes_filter(self,design_value,filter_option,filter_input):
+        if filter_option == "!=":
+            if design_value == filter_input:
+                return False
+            else:
+                return True
+
+        elif filter_option == "=":
+            if design_value == filter_input:
+                return True
+            else:
+                return False
+
+        elif filter_option == ">":
+            if design_value > filter_input:
+                return True
+            else:
+                return False
+
+        elif filter_option == "<":
+            if design_value < filter_input:
+                return True
+            else:
+                return False
+
+        elif filter_option == ">=":
+            if design_value >= filter_input:
+                return True
+            else:
+                return False
+
+        elif filter_option == "<=":
+            if design_value <= filter_input:
+                return True
+            else:
+                return False
+
+        else:
+            return True
 
 class FigureCanvas (FigureCanvasGTKAgg):
 
@@ -899,9 +998,21 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
         ('Save', 'Save the figure', 'filesave', 'save_figure'),
     )
 
+
     def __init__(self, canvas, parent):
         NavigationToolbar2GTKAgg.__init__(self, canvas, parent)
+        self.number_of_filters = 0
+        self.filter_number = 0
 
+        def on_apply_filter(widget):
+            for key in parent.filter_dict:
+                if widget in parent.filter_dict[key]:
+                    filter_number = key
+            parent.hidden_designs[filter_number] = {}
+            for key in parent.designs:
+                parent.hidden_designs[filter_number][key] = []
+            if len(parent.filter_dict[filter_number][2].get_text()):
+                parent.hide_designs(filter_number)
         def make_axis_menu(initial_metric, callback):
             store = gtk.ListStore(str, str)
             combo_box = gtk.ComboBox(store)
@@ -916,22 +1027,102 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
 
             combo_box.connect('changed', callback)
             return combo_box
+        def make_option_menu():
+            #store = gtk.ListStore(str)
+            combo_box = gtk.combo_box_new_text()
+            cell = gtk.CellRendererText()
+            combo_box.pack_start(cell,True)
+
+            options = [" ", "<", ">","<=",">=","=","!="]
+            for option in options:
+                combo_box.append_text(option)
+            combo_box.connect('changed',on_apply_filter)
+
+            return combo_box
+        def create_filter(number_of_filters):
+            self.number_of_filters += 1
+            self.filter_number += 1
+            parent.filter_dict[self.filter_number] = []
+
+            filter_menu = make_axis_menu(
+                    parent.filter_metric, on_apply_filter)
+            parent.filter_dict[self.filter_number].append(filter_menu)
+
+            filter_options = make_option_menu()
+            parent.filter_dict[self.filter_number].append(filter_options)
+
+            filter_input = gtk.Entry()
+            filter_input.connect('activate',on_apply_filter)
+            parent.filter_dict[self.filter_number].append(filter_input)
+
+            filter_apply = gtk.Button("Apply")
+            filter_apply.connect('clicked',on_apply_filter)
+            parent.filter_dict[self.filter_number].append(filter_apply)
+
+            filter_delete = gtk.Button("Delete")
+            filter_delete.connect('clicked',on_delete_filter)
+            parent.filter_dict[self.filter_number].append(filter_delete)
+
+            self.table.resize(4 + number_of_filters, 10)
+            self.table.attach(filter_menu,1,5,4 + self.number_of_filters - 1, 4 + self.number_of_filters, xoptions=0,yoptions=0)
+            self.table.attach(filter_options,5,6,4 + self.number_of_filters - 1, 4 + self.number_of_filters, xoptions=0,yoptions=0)
+            self.table.attach(filter_input,6,8,4 + self.number_of_filters - 1, 4 + self.number_of_filters,xoptions = 0)
+            self.table.attach(filter_apply,8,9,4+self.number_of_filters - 1, 4 + self.number_of_filters,xoptions=0, yoptions=0)
+            self.table.attach(filter_delete,9,10,4+self.number_of_filters - 1, 4 + self.number_of_filters, xoptions=0, yoptions=0)
+            self.table.remove(self.separator)
+            self.table.attach(self.separator,0,1,0,4 + number_of_filters)
+            self.table.show_all()
+
+        def delete_filter(number_of_filters,filter_number):
+            for filter_object in parent.filter_dict[filter_number]:
+                self.table.remove(filter_object)
+            parent.filter_dict[filter_number][1].set_active(0)
+            on_apply_filter(parent.filter_dict[filter_number][3])
+            del parent.filter_dict[filter_number]
+            del parent.hidden_designs[filter_number]
+
+            self.number_of_filters -= 1
+            self.table.remove(self.separator)
+            self.table.attach(self.separator,0,1,0,4 + number_of_filters)
+            self.table.resize(4 + number_of_filters, 10)
+            self.table.show_all()
+            parent.update_everything
+
+
+        def on_add_filter(widget):
+            create_filter(self.number_of_filters)
+
+        def on_delete_filter(widget):
+            for key in parent.filter_dict:
+                if widget in parent.filter_dict[key]:
+                    filter_number = key
+            if self.number_of_filters > 0:
+                delete_filter(self.number_of_filters,filter_number)
 
         self.x_axis_menu = make_axis_menu(
                 parent.x_metric, parent.on_change_x_metric)
         self.y_axis_menu = make_axis_menu(
                 parent.y_metric, parent.on_change_y_metric)
+        self.filterlabel = gtk.Label()
+        self.filterlabel.set_markup("<b>Filters:</b>")
+        self.add_filter_button = gtk.Button(label="    +    ")
+        self.add_filter_button.connect('clicked',on_add_filter)
+        self.separator = gtk.SeparatorToolItem()
 
-        table = gtk.Table(3, 4)
-        table.attach(gtk.SeparatorToolItem(), 0, 1, 0, 3)
-        table.attach(self.y_axis_menu, 1, 2, 1, 2, xoptions=0, yoptions=0)
-        table.attach(gtk.Label(' vs. '), 2, 3, 1, 2, xoptions=0, yoptions=0)
-        table.attach(self.x_axis_menu, 3, 4, 1, 2, xoptions=0, yoptions=0)
+        self.table = gtk.Table(4, 10)
+        self.table.attach(self.separator, 0, 1, 0, 4)
+        self.table.attach(self.y_axis_menu, 1, 5, 1, 2, xoptions=0, yoptions=0)
+        self.table.attach(gtk.Label(' vs. '), 5, 6, 1, 2, xoptions=0, yoptions=0)
+        self.table.attach(self.x_axis_menu, 6, 10, 1, 2, xoptions=0, yoptions=0)
+        self.table.attach(self.filterlabel,1,3,3,4,xoptions=2,yoptions=0)
+        self.table.attach(self.add_filter_button,3,4,3,4,xoptions=2,yoptions=0)
+        #self.table.attach(self.delete_filter_button,4,5,3,4,xoptions=2,yoptions=0)
 
-        tool_item = gtk.ToolItem()
-        tool_item.add(table)
+        self.tool_item = gtk.ToolItem()
+        self.tool_item.add(self.table)
 
-        self.insert(tool_item, len(self.toolitems))
+        self.insert(self.tool_item, len(self.toolitems))
+
 
     def set_message(self, message):
         pass
@@ -960,6 +1151,7 @@ metric_guides = {
 
 default_x_metric = 'loop_rmsd'
 default_y_metric = 'total_score'
+default_filter_metric = None
 
 def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True):
     try:
@@ -973,8 +1165,8 @@ def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True)
                 raise
 
         if designs and launch_gui:
-            # If the user wants to run in a background process, try to fork.  
-            # But for some reason fork() doesn't seem to work on Macs, so just 
+            # If the user wants to run in a background process, try to fork.
+            # But for some reason fork() doesn't seem to work on Macs, so just
             # run the GUI in the main process if anything goes wrong.
             try:
                 if fork_gui and os.fork():
@@ -1021,7 +1213,7 @@ def parse_records_from_pdbs(pdb_paths):
             print "\nFailed to read '{}'".format(path)
             continue
 
-        # Parse the pdb file.  This method may be overloaded to parse 
+        # Parse the pdb file.  This method may be overloaded to parse
         # different kinds of information.
 
         record = {'path': os.path.basename(path)}
@@ -1032,7 +1224,7 @@ def parse_records_from_pdbs(pdb_paths):
     return records
 
 def parse_record_from_pdb(record, pdb_path, lines):
-    # Get different information from different lines in the PDB file.  Some 
+    # Get different information from different lines in the PDB file.  Some
     # of these lines are specific to certain simulations.
 
     for line in lines:
@@ -1050,9 +1242,9 @@ def try_to_run_command(command):
         try: subprocess.Popen(command, stdout=devnull)
         except OSError as error:
             message = gtk.MessageDialog(
-                    parent=None, 
-                    flags=0, 
-                    type=gtk.MESSAGE_ERROR, 
+                    parent=None,
+                    flags=0,
+                    type=gtk.MESSAGE_ERROR,
                     buttons=gtk.BUTTONS_OK,
             )
             message.set_markup("<b>Failed to run {}</b>".format(command[0]))
@@ -1083,4 +1275,3 @@ def main():
             launch_gui=not args['--quiet'],
             fork_gui=not args['--no-fork'],
     )
-
