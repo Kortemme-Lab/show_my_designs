@@ -1008,9 +1008,6 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
             for key in parent.filter_dict:
                 if widget in parent.filter_dict[key]:
                     filter_number = key
-            parent.hidden_designs[filter_number] = {}
-            for key in parent.designs:
-                parent.hidden_designs[filter_number][key] = []
             if len(parent.filter_dict[filter_number][2].get_text()):
                 parent.hide_designs(filter_number)
         def make_axis_menu(initial_metric, callback):
@@ -1043,7 +1040,9 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
             self.number_of_filters += 1
             self.filter_number += 1
             parent.filter_dict[self.filter_number] = []
-
+            parent.hidden_designs[self.filter_number] = {}
+            for key in parent.designs:
+                parent.hidden_designs[self.filter_number][parent.designs[key]] = []
             filter_menu = make_axis_menu(
                     parent.filter_metric, on_apply_filter)
             parent.filter_dict[self.filter_number].append(filter_menu)
@@ -1116,7 +1115,6 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
         self.table.attach(self.x_axis_menu, 6, 10, 1, 2, xoptions=0, yoptions=0)
         self.table.attach(self.filterlabel,1,3,3,4,xoptions=2,yoptions=0)
         self.table.attach(self.add_filter_button,3,4,3,4,xoptions=2,yoptions=0)
-        #self.table.attach(self.delete_filter_button,4,5,3,4,xoptions=2,yoptions=0)
 
         self.tool_item = gtk.ToolItem()
         self.tool_item.add(self.table)
