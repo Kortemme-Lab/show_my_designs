@@ -796,7 +796,7 @@ class ShowMyDesigns (gtk.Window):
         # Plot the two axes.
 
         for index, design in enumerate(designs):
-            representative = design.representative
+            rep = design.representative
             x_list = design.get_metric(x_metric)
             y_list = design.get_metric(y_metric)
             color = color_from_cycle(index)
@@ -805,7 +805,6 @@ class ShowMyDesigns (gtk.Window):
             hide_indices = []
             y = []
             x = []
-            rep = representative
             if self.hidden_designs != {}:
                 for i, val in enumerate(x_list):
                     for key in self.hidden_designs:
@@ -816,8 +815,9 @@ class ShowMyDesigns (gtk.Window):
                     if index not in hide_indices:
                         x.append(x_list[index])
                         y.append(y_list[index])
-                        if index == representative:
-                            rep = len(x) - 1
+                    else:
+                        x.append(None)
+                        y.append(None)
 
             else:
                 x = x_list
@@ -825,10 +825,9 @@ class ShowMyDesigns (gtk.Window):
             size = np.clip(7500 / max(len(x),1), 2, 15)
 
             # Highlight the representative model.
-            if representative not in hide_indices:
-                axes.scatter(
-                        [x[rep]], [y[rep]],
-                        s=60, c=yellow[1], marker='o', edgecolor='none')
+            axes.scatter(
+                    [x[rep]], [y[rep]],
+                    s=60, c=yellow[1], marker='o', edgecolor='none')
 
             # Draw the whole score vs distance plot.
 
@@ -927,7 +926,6 @@ class ShowMyDesigns (gtk.Window):
         designs = self.designs
         for key in designs:
             design = designs[key]
-            self.tempcount = 0
             self.hidden_designs[filter_number][design] = []
             for index, value in enumerate(design.get_metric(filter_metric)):
                 if self.passes_filter(value,filter_option,filter_input) == False:
