@@ -36,12 +36,13 @@ Features:
 
 ## Imports
 import collections, glob, gzip, os, re, shutil, subprocess, sys
-import gtk, pango, yaml
+import gtk, gobject, pango, yaml
 import matplotlib.pyplot as plt, numpy as np, scipy as sp, pandas as pd
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
 from matplotlib.backends.backend_gtkagg import NavigationToolbar2GTKAgg
+from pprint import pprint
 
 
 class Design (object):
@@ -53,6 +54,7 @@ class Design (object):
         self.rep_path = os.path.join(directory, 'representative.txt')
 
         self._models = None
+        self._metrics = {}
         self._notes = ""
         self._representative = None
 
@@ -82,7 +84,7 @@ class Design (object):
     @property
     def representative(self):
         if self._representative is None:
-            return np.argmin(self.get_metric('total_score'))
+            return self.get_metric('total_score').idxmin()
         else:
             return self._representative
 
@@ -95,12 +97,16 @@ class Design (object):
     def representative_path(self):
         return self.paths[self.representative]
 
+    @property
+    def metrics(self):
+        return self._metrics
+
     def get_metric(self, metric):
-        if metric not in self.defined_metrics:
+        if metric not in self.metrics:
             message = "No such metric: '{}'\n".format(metric)
             message += "Defined metrics are: " + ', '.join(
-                    "'{}'".format(x) for x in self.defined_metrics)
-            print type(metric), ' '.join(str(type(x)) for x in self.defined_metrics)
+                    "'{}'".format(x) for x in self.metrics)
+            print type(metric), ' '.join(str(type(x)) for x in self.metrics)
 
             raise RuntimeError(message)
 
@@ -109,14 +115,6 @@ class Design (object):
     def get_coord(self, x_metric, y_metric, index=None):
         i = index if index is not None else self.representative
         return self.get_metric(x_metric)[i], self.get_metric(y_metric)[i]
-
-    @property
-    def defined_metrics(self):
-        # This method returns the names of any column in self._models that
-        # contains numeric data.  Any dtype other than 'object' is assumed to
-        # be numeric.
-        return {x for x in self._models.keys()
-                if self._models[x].dtype != 'object'}
 
 
     def _load_models(self, use_cache):
@@ -165,20 +163,40 @@ class Design (object):
         uncached_records = parse_records_from_pdbs(uncached_paths)
         self._models = pd.DataFrame(cached_records + uncached_records)
 
-        # Make sure at least two metrics have been associated with each model
-        # in this directory.
+        # Derive information on the metrics that can be plotted from the 
 
-        if len(self.defined_metrics) == 0:
-            raise IOError("no metrics defined for the models in '{}'".format(self.directory))
-        if len(self.defined_metrics) == 1:
-            defined_metric = self.defined_metrics.pop()
-            raise IOError("only found one metric '{}' for the models in '{}', need at least two".format(defined_metric, self.directory))
+        self._load_metrics()
 
         # If everything else looks good, cache the data frame so we can load
         # faster next time.
 
         if not self._models.empty:
             self._models.to_pickle(self.cache_path)
+
+    def _load_metrics(self):
+        # Treat column in self._models that contains numeric data as a metric.
+        # Any dtype other than 'object' is assumed to be numeric.
+
+        self._metrics = {
+            x: MetricInfo(
+                x,
+                title=get_metric_title(x, self),
+                order=get_metric_order(x, self),
+                guide=get_metric_guide(x, self),
+                limits=get_metric_limits(x, self),
+            )
+            for x in self._models.keys()
+            if self._models[x].dtype != 'object'
+        }
+
+        # Make sure at least two metrics have been associated with each model
+        # in this directory.
+
+        if len(self._metrics) == 0:
+            raise IOError("no metrics defined for the models in '{}'".format(self.directory))
+        if len(self._metrics) == 1:
+            name = next(iter(self._metrics))
+            raise IOError("only found one metric '{}' for the models in '{}', need at least two".format(name, self.directory))
 
     def _load_annotations(self):
         try:
@@ -214,6 +232,7 @@ class ShowMyDesigns (gtk.Window):
     def __init__(self, designs):
 
         # Setup the parent class.
+
         self.filter_dict = {}
         self.hidden_designs = {}
         gtk.Window.__init__(self)
@@ -228,46 +247,100 @@ class ShowMyDesigns (gtk.Window):
         self.keys = list()
         self.selected_model = None
 
-        self.defined_metrics = sorted(set.intersection(
-                *[x.defined_metrics for x in self]))
+        self.metrics = {
+                k: next(iter(self)).metrics[k]
+                for k in set.intersection(*[set(x.metrics) for x in self])
+        }
+        self.sorted_metrics = sorted(
+                self.metrics,
+                key=lambda k: self.metrics[k].order
+        )
         self.x_metric = (
                 default_x_metric
-                if default_x_metric in self.defined_metrics
-                else self.defined_metrics[1])
+                if default_x_metric in self.metrics
+                else self.sorted_metrics[0])
         self.y_metric = (
                 default_y_metric
-                if default_y_metric in self.defined_metrics
-                else self.defined_metrics[1])
-        self.filter_metric = (
-                default_filter_metric
-                if default_filter_metric in self.defined_metrics
-                else self.defined_metrics[1])
+                if default_y_metric in self.metrics
+                else self.sorted_metrics[1])
 
         # Setup the GUI.
 
         self.connect('destroy', lambda x: gtk.main_quit())
         self.set_default_size(int(1.618 * 630), 630)
 
-        model_list = self.setup_model_list()
+        menu_bar = self.setup_menu_bar()
         model_viewer = self.setup_model_viewer()
-        #model_viewer.set_size_request(529, 529)
 
-        if len(designs) > 1:
-            widgets = gtk.HPaned()
-            widgets.add1(model_list)
-            widgets.add2(model_viewer)
-        else:
-            widgets = model_viewer
+        vbox = gtk.VBox()
+        vbox.pack_start(menu_bar, False)
+        vbox.pack_end(model_viewer, True)
 
-        self.add(widgets)
+        self.add(vbox)
         self.set_border_width(3)
         self.update_everything()
         self.show_all()
         self.set_focus(None)
 
+        if len(self.designs) == 1:
+            self.model_list.hide()
+
     def __iter__(self):
         return iter(self.designs.values())
 
+
+    def setup_menu_bar(self):
+        bar = gtk.MenuBar()
+
+        # The "File" menu:
+        menu = gtk.Menu()
+        item = gtk.MenuItem("_File")
+        item.set_submenu(menu)
+        bar.append(item)
+
+        item = gtk.MenuItem("Save selected paths")
+        item.connect('activate', lambda _: self.save_selected_paths())
+        menu.append(item)
+
+        item = gtk.MenuItem("Save selected funnels")
+        item.connect('activate', lambda _: self.save_selected_funnels())
+        menu.append(item)
+
+        # The "View" menu:
+        menu = gtk.Menu()
+        item = gtk.MenuItem("_View")
+        item.set_submenu(menu)
+        bar.append(item)
+
+        item = gtk.CheckMenuItem("Filters")
+        item.connect('toggled', self.on_toggle_filter_pane)
+        menu.append(item)
+
+        item = gtk.CheckMenuItem("Annotations")
+        item.connect('toggled', self.on_toggle_annotation_pane)
+        menu.append(item)
+
+        return bar
+
+    def setup_model_viewer(self):
+        plot = self.setup_plot()
+        self.model_list = self.setup_model_list()
+        self.filter_pane = self.setup_filter_pane()
+        self.annotation_pane = self.setup_annotation_pane()
+
+        sidebar = gtk.VPaned()
+        sidebar.add1(self.model_list)
+        sidebar.add2(self.filter_pane)
+
+        bottombar = gtk.VPaned()
+        bottombar.add1(plot)
+        bottombar.add2(self.annotation_pane)
+
+        viewer = gtk.HPaned()
+        viewer.add1(sidebar)
+        viewer.add2(bottombar)
+
+        return viewer
 
     def setup_model_list(self):
         list_store = gtk.ListStore(str)
@@ -288,13 +361,13 @@ class ShowMyDesigns (gtk.Window):
         for index, parameters in enumerate(columns):
             title, attr = parameters
 
-            def cell_data_func(column, cell, model, iter, attr):
+            def cell_data_func(column, cell, model, iter, attr): #
                 key = model.get_value(iter, 0)
                 design = self.designs[key]
                 text = getattr(design, attr)
                 cell.set_property('text', text)
 
-            def sort_func(model, iter_1, iter_2, attr):
+            def sort_func(model, iter_1, iter_2, attr): #
                 key_1 = model.get_value(iter_1, 0)
                 key_2 = model.get_value(iter_2, 0)
                 design_1 = self.designs[key_1]
@@ -328,31 +401,11 @@ class ShowMyDesigns (gtk.Window):
         search_buffer.connect('deleted-text', self.on_search_in_notes)
         search_buffer.connect('inserted-text', self.on_search_in_notes)
 
-        save_paths = gtk.Button("Save selected paths")
-        save_funnels = gtk.Button("Save selected funnels")
-
-        save_paths.connect(
-                'clicked', lambda _: self.save_interesting_paths())
-        save_funnels.connect(
-                'clicked', lambda _: self.save_interesting_funnels())
-
         vbox = gtk.VBox()
         vbox.pack_start(self.search_form, expand=False)
         vbox.pack_start(frame)
-        vbox.pack_start(save_paths, expand=False)
-        vbox.pack_start(save_funnels, expand=False)
 
         return vbox
-
-    def setup_model_viewer(self):
-        plot = self.setup_plot()
-        notes = self.setup_annotation_area()
-
-        panes = gtk.VPaned()
-        panes.add1(plot)
-        panes.add2(notes)
-
-        return panes
 
     def setup_plot(self):
         figure = Figure(facecolor='#edecea')
@@ -375,25 +428,6 @@ class ShowMyDesigns (gtk.Window):
 
         self.toolbar = NavigationToolbar(self.canvas, self)
 
-        # Create the axis menus.
-
-        x_axis_menu = gtk.combo_box_new_text()
-        y_axis_menu = gtk.combo_box_new_text()
-        filter_menu = gtk.combo_box_new_text()
-        filter_options = gtk.combo_box_new_text()
-
-        for i, metric in enumerate(self.defined_metrics):
-            x_axis_menu.append_text(get_metric_title(metric))
-            y_axis_menu.append_text(get_metric_title(metric))
-            filter_menu.append_text(get_metric_title(metric))
-
-            if metric == self.x_metric: x_axis_menu.set_active(i)
-            if metric == self.y_metric: y_axis_menu.set_active(i)
-
-        x_axis_menu.connect('changed', self.on_change_x_metric)
-        y_axis_menu.connect('changed', self.on_change_y_metric)
-
-
         # Place all the widgets.
 
         self.mouse_position = gtk.Label("")
@@ -408,7 +442,12 @@ class ShowMyDesigns (gtk.Window):
 
         return vbox
 
-    def setup_annotation_area(self):
+    def setup_filter_pane(self):
+        pane = FilterPane(self)
+        pane.connect('updated', lambda _: self.update_plot())
+        return pane
+
+    def setup_annotation_pane(self):
         self.notes = gtk.TextView()
         self.notes.set_wrap_mode(gtk.WRAP_WORD)
         self.notes.set_size_request(-1, 100)
@@ -428,11 +467,35 @@ class ShowMyDesigns (gtk.Window):
 
         return frame
 
+    def setup_metric_menu(self, callback=None, initial_choice=None):
+        try: self.metric_store
+        except AttributeError:
+            self.metric_store = gtk.ListStore(str, str)
+
+            for key in self.sorted_metrics:
+                metric = self.metrics[key]
+                self.metric_store.append([metric.name, metric.title])
+
+        cell = gtk.CellRendererText()
+        menu = gtk.ComboBox(self.metric_store)
+        menu.pack_start(cell, True)
+        menu.add_attribute(cell, 'text', 1)
+
+        menu.set_active(0)
+        for i, metric in enumerate(self.sorted_metrics):
+            if metric == initial_choice:
+                menu.set_active(i)
+
+        if callback:
+            menu.connect('changed', callback)
+
+        return menu
+
 
     def on_hotkey_press(self, widget, event):
         key = gtk.gdk.keyval_name(event.keyval).lower()
-        #if event.state & gtk.gdk.CONTROL_MASK: key = 'ctrl-' + key
-        #if event.state & gtk.gdk.SHIFT_MASK: key = 'shift-' + key
+        if event.state & gtk.gdk.CONTROL_MASK: key = 'ctrl-' + key
+        if event.state & gtk.gdk.SHIFT_MASK: key = 'shift-' + key
 
         hotkeys = {
                 'escape': self.normal_mode,
@@ -444,6 +507,8 @@ class ShowMyDesigns (gtk.Window):
                 'c': self.refocus_plot,
                 'tab': self.cycle_y_metric,
                 'space': self.cycle_x_metric,
+                'shift-tab': self.reverse_cycle_y_metric,
+                'shift-space': self.reverse_cycle_x_metric,
         }
         multi_design_hotkeys = {
                 'j': self.next_design,     'f': self.next_design,
@@ -451,7 +516,13 @@ class ShowMyDesigns (gtk.Window):
                 'slash': self.search_mode,
         }
 
-        if self.get_focus() not in (self.notes, self.search_form):
+        keep_focus = (
+                gtk.Entry,
+                gtk.TextView,
+                gtk.Button,
+                gtk.ComboBox
+        )
+        if not isinstance(self.get_focus(), keep_focus):
             hotkeys.update(normal_mode_hotkeys)
             if len(self.designs) > 1:
                 hotkeys.update(multi_design_hotkeys)
@@ -461,9 +532,9 @@ class ShowMyDesigns (gtk.Window):
             return True
 
     def on_search_in_notes(self, entry_buffer, *_):
-        self.update_filter()
+        self.update_designs()
 
-    def on_select_designs(self, selection) :
+    def on_select_designs(self, selection):
         new_keys = []
         old_keys = self.keys[:]
         self.keys = []
@@ -604,7 +675,7 @@ class ShowMyDesigns (gtk.Window):
         xsel.communicate(path)
 
     def on_set_representative(self, widget, design, index):
-        design.set_representative(index)
+        design.representative = index
         self.update_plot()
 
     def on_edit_annotation(self, buffer):
@@ -620,6 +691,19 @@ class ShowMyDesigns (gtk.Window):
     def on_change_y_metric(self, widget):
         self.y_metric = widget.get_active_text()
         self.update_plot()
+    
+    def on_toggle_filter_pane(self, widget):
+        if widget.get_active():
+            self.filter_pane.show()
+        else:
+            self.filter_pane.hide()
+
+    def on_toggle_annotation_pane(self, widget):
+        if widget.get_active():
+            self.annotation_pane.show()
+        else:
+            self.annotation_pane.hide()
+
 
     def normal_mode(self):
         self.set_focus(None)
@@ -663,11 +747,11 @@ class ShowMyDesigns (gtk.Window):
             selection.select_path(paths[0][0] - 1)
             self.view.scroll_to_cell(paths[0][0] - 1)
 
-    def cycle_x_metric(self):
-        i = self.defined_metrics.index(self.x_metric)
-        i = (i + 1) % len(self.defined_metrics)
-        if self.defined_metrics[i] == self.y_metric:
-            i = (i + 1) % len(self.defined_metrics)
+    def cycle_x_metric(self, step=1):
+        i = self.sorted_metrics.index(self.x_metric)
+        i = (i + step) % len(self.sorted_metrics)
+        if self.sorted_metrics[i] == self.y_metric:
+            i = (i + step) % len(self.sorted_metrics)
 
         # Change the axis by programmatically selecting a new entry in the
         # corresponding drop-down menu in the toolbar.  This is incredibly
@@ -676,38 +760,30 @@ class ShowMyDesigns (gtk.Window):
         # know to keep the drop-down menu in sync.
 
         self.toolbar.x_axis_menu.set_active(i)
+
+    def cycle_y_metric(self, step=1):
+        i = self.sorted_metrics.index(self.y_metric)
+        i = (i + step) % len(self.sorted_metrics)
+        if self.sorted_metrics[i] == self.x_metric:
+            i = (i + step) % len(self.sorted_metrics)
+
+        # Change the axis by programmatically selecting a new entry in the
+        # corresponding drop-down menu in the toolbar.  This is incredibly
+        # roundabout (and it kinda breaks encapsulation, although I consider
+        # ModelViewer and ModelToolbar to be friends), but it's the only way I
+        # know to keep the drop-down menu in sync.
+
+        self.toolbar.y_axis_menu.set_active(i)
 
     def reverse_cycle_x_metric(self):
-        i = self.defined_metrics.index(self.x_metric)
-        i = (i - 1) % len(self.defined_metrics)
-        if self.defined_metrics[i] == self.y_metric:
-            i = (i - 1) % len(self.defined_metrics)
-        self.toolbar.x_axis_menu.set_active(i)
-
-    def cycle_y_metric(self):
-        i = self.defined_metrics.index(self.y_metric)
-        i = (i + 1) % len(self.defined_metrics)
-        if self.defined_metrics[i] == self.x_metric:
-            i = (i + 1) % len(self.defined_metrics)
-
-        # Change the axis by programmatically selecting a new entry in the
-        # corresponding drop-down menu in the toolbar.  This is incredibly
-        # roundabout (and it kinda breaks encapsulation, although I consider
-        # ModelViewer and ModelToolbar to be friends), but it's the only way I
-        # know to keep the drop-down menu in sync.
-
-        self.toolbar.y_axis_menu.set_active(i)
+        self.cycle_x_metric(-1)
 
     def reverse_cycle_y_metric(self):
-        i = self.defined_metrics.index(self.y_metric)
-        i = (i - 1) % len(self.defined_metrics)
-        if self.defined_metrics[i] == self.x_metric:
-            i = (i - 1) % len(self.defined_metrics)
-        self.toolbar.y_axis_menu.set_active(i)
+        self.cycle_y_metric(-1)
 
-    def save_interesting_paths(self):
+    def save_selected_paths(self):
         chooser = gtk.FileChooserDialog(
-                "Save interesting paths",
+                "Save selected paths",
                 parent=self,
                 action=gtk.FILE_CHOOSER_ACTION_SAVE,
                 buttons=(
@@ -715,7 +791,7 @@ class ShowMyDesigns (gtk.Window):
                     gtk.STOCK_SAVE, gtk.RESPONSE_OK))
 
         chooser.set_current_folder(os.getcwd())
-        chooser.set_current_name('interesting_paths.txt')
+        chooser.set_current_name('selected_paths.txt')
 
         response = chooser.run()
 
@@ -730,14 +806,14 @@ class ShowMyDesigns (gtk.Window):
 
         chooser.destroy()
 
-    def save_interesting_funnels(self):
+    def save_selected_funnels(self):
         from matplotlib.backends.backend_pdf import PdfPages
         import matplotlib.pyplot as plt
 
         selected_designs = [self.designs[key] for key in self.keys]
 
         chooser = gtk.FileChooserDialog(
-                "Save interesting funnels",
+                "Save selected funnels",
                 parent=self,
                 action=gtk.FILE_CHOOSER_ACTION_SAVE,
                 buttons=(
@@ -745,7 +821,7 @@ class ShowMyDesigns (gtk.Window):
                     gtk.STOCK_SAVE, gtk.RESPONSE_OK))
 
         chooser.set_current_folder(os.getcwd())
-        chooser.set_current_name('interesting_funnels.pdf')
+        chooser.set_current_name('selected_funnels.pdf')
 
         response = chooser.run()
 
@@ -781,8 +857,9 @@ class ShowMyDesigns (gtk.Window):
         blue =   '#729fcf', '#3465a4', '#204a87'
         purple = '#ad7fa8', '#75507b', '#5c3566'
         brown =  '#e9b96e', '#c17d11', '#8f5902'
+        grey =   '#2e3436', '#555753', '#888a85', '#babdb6', '#d3d7cf', '#eeeeec'
 
-        def color_from_cycle(index):
+        def color_from_cycle(index): #
             cycle = (blue[1], red[1], green[2], orange[1], purple[1], brown[1],
                      blue[0], red[0], green[1], orange[0], purple[0], brown[0])
             return cycle[index % len(cycle)]
@@ -790,49 +867,39 @@ class ShowMyDesigns (gtk.Window):
         # Clear the axes and reset the axis labels
 
         axes.clear()
-        axes.set_xlabel(get_metric_title(x_metric))
-        axes.set_ylabel(get_metric_title(y_metric))
+        axes.set_xlabel(self.metrics[x_metric].title)
+        axes.set_ylabel(self.metrics[y_metric].title)
 
         # Plot the two axes.
 
         for index, design in enumerate(designs):
             rep = design.representative
-            x_list = design.get_metric(x_metric)
-            y_list = design.get_metric(y_metric)
             color = color_from_cycle(index)
             label = labels[index] if labels is not None else ''
+            action = self.filter_pane.get_action()
+            keep, drop = self.filter_pane.get_masks(design)
 
-            hide_indices = []
-            y = []
-            x = []
-            if self.hidden_designs != {}:
-                for i, val in enumerate(x_list):
-                    for key in self.hidden_designs:
-                        if i in self.hidden_designs[key][design]:
-                            hide_indices.append(i)
+            x = design.get_metric(x_metric)
+            y = design.get_metric(y_metric)
 
-                for index, value in enumerate(x_list):
-                    if index not in hide_indices:
-                        x.append(x_list[index])
-                        y.append(y_list[index])
-                    else:
-                        x.append(None)
-                        y.append(None)
-
-            else:
-                x = x_list
-                y = y_list
-            size = np.clip(7500 / max(len(x),1), 2, 15)
+            # Scale the size of the points by the number of points.
+            size = np.clip(7500 / max(len(x), 1), 2, 15)
 
             # Highlight the representative model.
-            axes.scatter(
-                    [x[rep]], [y[rep]],
-                    s=60, c=yellow[1], marker='o', edgecolor='none')
+            if keep[rep]:
+                axes.scatter(
+                        [x[rep]], [y[rep]],
+                        s=60, c=yellow[1], marker='o', edgecolor='none')
+
+            # Highlight the filtered points, if that's what the user wants.
+            if action == 'highlight':
+                axes.scatter(
+                        x[drop], y[drop],
+                        s=size, c=grey[4], marker='o', edgecolor='none')
 
             # Draw the whole score vs distance plot.
-
             lines = axes.scatter(
-                    x, y,
+                    x[keep], y[keep],
                     s=size, c=color, marker='o', edgecolor='none',
                     label=label, picker=True)
 
@@ -842,10 +909,9 @@ class ShowMyDesigns (gtk.Window):
         # Pick the axis limits based on the range of every design.  This is done
         # so you can scroll though every design without the axes changing size.
 
-        def get_metric_limits(metric):
+        def get_metric_limits(metric): #
             values = np.concatenate([x.get_metric(metric) for x in self])
-            try: return metric_limits[metric](values)
-            except KeyError: return min(values), max(values)
+            return self.metrics[metric].limits(values)
 
         x_min, x_max = get_metric_limits(x_metric)
         y_min, y_max = get_metric_limits(y_metric)
@@ -864,8 +930,8 @@ class ShowMyDesigns (gtk.Window):
 
         # If appropriate, draw guides for the given axes.
 
-        x_guide = metric_guides.get(self.x_metric)
-        y_guide = metric_guides.get(self.y_metric)
+        x_guide = get_metric_guide(self.x_metric)
+        y_guide = get_metric_guide(self.y_metric)
 
         if x_guide is not None:
             axes.axvline(x_guide, color='gray', linestyle='--')
@@ -877,11 +943,10 @@ class ShowMyDesigns (gtk.Window):
         if labels and 1 < len(designs) < 5:
             axes.legend(loc='upper right')
 
-
     def update_everything(self):
-        self.update_filter()
         self.update_annotations()
         self.update_plot()
+        self.update_designs()
 
     def update_plot(self):
         designs = [self.designs[k] for k in self.keys]
@@ -896,8 +961,7 @@ class ShowMyDesigns (gtk.Window):
         else:
             self.notes.set_sensitive(False)
 
-
-    def update_filter(self):
+    def update_designs(self):
         model = self.view.get_model()
         selector = self.view.get_selection()
         model.clear()
@@ -917,6 +981,7 @@ class ShowMyDesigns (gtk.Window):
 
         selector.select_path((0,))
 
+
     def hide_designs(self,filter_number):
         filter_parameters = self.filter_dict[filter_number]
         filter_metric = filter_parameters[0].get_active_text()
@@ -931,7 +996,6 @@ class ShowMyDesigns (gtk.Window):
                 if self.passes_filter(value,filter_option,filter_input) == False:
                     self.hidden_designs[filter_number][design].append(index)
         self.update_plot()
-
 
     def passes_filter(self,design_value,filter_option,filter_input):
         if filter_option == "!=":
@@ -973,6 +1037,7 @@ class ShowMyDesigns (gtk.Window):
         else:
             return True
 
+
 class FigureCanvas (FigureCanvasGTKAgg):
 
     def __init__(self, figure):
@@ -985,7 +1050,7 @@ class FigureCanvas (FigureCanvasGTKAgg):
 
 class NavigationToolbar (NavigationToolbar2GTKAgg):
 
-    toolitems = ( # (fold)
+    toolitems = (
         ('Home', 'Reset original view', 'home', 'home'),
         ('Back', 'Back to previous view', 'back', 'back'),
         ('Forward', 'Forward to next view', 'forward', 'forward'),
@@ -996,139 +1061,217 @@ class NavigationToolbar (NavigationToolbar2GTKAgg):
         ('Save', 'Save the figure', 'filesave', 'save_figure'),
     )
 
-
     def __init__(self, canvas, parent):
         NavigationToolbar2GTKAgg.__init__(self, canvas, parent)
-        self.number_of_filters = 0
-        self.filter_number = 0
 
-        def on_apply_filter(widget):
-            for key in parent.filter_dict:
-                if widget in parent.filter_dict[key]:
-                    filter_number = key
-            if len(parent.filter_dict[filter_number][2].get_text()):
-                parent.hide_designs(filter_number)
-        def make_axis_menu(initial_metric, callback):
-            store = gtk.ListStore(str, str)
-            combo_box = gtk.ComboBox(store)
-            cell = gtk.CellRendererText()
-            combo_box.pack_start(cell, True)
-            combo_box.add_attribute(cell, 'text', 1)
+        self.x_axis_menu = parent.setup_metric_menu(
+                parent.on_change_x_metric, parent.x_metric)
+        self.y_axis_menu = parent.setup_metric_menu(
+                parent.on_change_y_metric, parent.y_metric)
 
-            for i, metric in enumerate(parent.defined_metrics):
-                store.append([metric, get_metric_title(metric)])
-                if metric == initial_metric:
-                    combo_box.set_active(i)
+        table = gtk.Table(3, 4)
+        table.attach(gtk.SeparatorToolItem(), 0, 1, 0, 3)
+        table.attach(self.y_axis_menu, 1, 2, 1, 2, xoptions=0, yoptions=0)
+        table.attach(gtk.Label(' vs. '), 2, 3, 1, 2, xoptions=0, yoptions=0)
+        table.attach(self.x_axis_menu, 3, 4, 1, 2, xoptions=0, yoptions=0)
 
-            combo_box.connect('changed', callback)
-            return combo_box
-        def make_option_menu():
-            #store = gtk.ListStore(str)
-            combo_box = gtk.combo_box_new_text()
-            cell = gtk.CellRendererText()
-            combo_box.pack_start(cell,True)
+        tool_item = gtk.ToolItem()
+        tool_item.add(table)
 
-            options = [" ", "<", ">","<=",">=","=","!="]
-            for option in options:
-                combo_box.append_text(option)
-            combo_box.connect('changed',on_apply_filter)
-
-            return combo_box
-        def create_filter(number_of_filters):
-            self.number_of_filters += 1
-            self.filter_number += 1
-            parent.filter_dict[self.filter_number] = []
-            parent.hidden_designs[self.filter_number] = {}
-            for key in parent.designs:
-                parent.hidden_designs[self.filter_number][parent.designs[key]] = []
-            filter_menu = make_axis_menu(
-                    parent.filter_metric, on_apply_filter)
-            parent.filter_dict[self.filter_number].append(filter_menu)
-
-            filter_options = make_option_menu()
-            parent.filter_dict[self.filter_number].append(filter_options)
-
-            filter_input = gtk.Entry()
-            filter_input.connect('activate',on_apply_filter)
-            parent.filter_dict[self.filter_number].append(filter_input)
-
-            filter_apply = gtk.Button("Apply")
-            filter_apply.connect('clicked',on_apply_filter)
-            parent.filter_dict[self.filter_number].append(filter_apply)
-
-            filter_delete = gtk.Button("Delete")
-            filter_delete.connect('clicked',on_delete_filter)
-            parent.filter_dict[self.filter_number].append(filter_delete)
-
-            self.table.resize(4 + number_of_filters, 10)
-            self.table.attach(filter_menu,1,5,4 + self.number_of_filters - 1, 4 + self.number_of_filters, xoptions=0,yoptions=0)
-            self.table.attach(filter_options,5,6,4 + self.number_of_filters - 1, 4 + self.number_of_filters, xoptions=0,yoptions=0)
-            self.table.attach(filter_input,6,8,4 + self.number_of_filters - 1, 4 + self.number_of_filters,xoptions = 0)
-            self.table.attach(filter_apply,8,9,4+self.number_of_filters - 1, 4 + self.number_of_filters,xoptions=0, yoptions=0)
-            self.table.attach(filter_delete,9,10,4+self.number_of_filters - 1, 4 + self.number_of_filters, xoptions=0, yoptions=0)
-            self.table.remove(self.separator)
-            self.table.attach(self.separator,0,1,0,4 + number_of_filters)
-            self.table.show_all()
-
-        def delete_filter(number_of_filters,filter_number):
-            for filter_object in parent.filter_dict[filter_number]:
-                self.table.remove(filter_object)
-            parent.filter_dict[filter_number][1].set_active(0)
-            on_apply_filter(parent.filter_dict[filter_number][3])
-            del parent.filter_dict[filter_number]
-            del parent.hidden_designs[filter_number]
-
-            self.number_of_filters -= 1
-            self.table.remove(self.separator)
-            self.table.attach(self.separator,0,1,0,4 + number_of_filters)
-            self.table.resize(4 + number_of_filters, 10)
-            self.table.show_all()
-            parent.update_everything
-
-
-        def on_add_filter(widget):
-            create_filter(self.number_of_filters)
-
-        def on_delete_filter(widget):
-            for key in parent.filter_dict:
-                if widget in parent.filter_dict[key]:
-                    filter_number = key
-            if self.number_of_filters > 0:
-                delete_filter(self.number_of_filters,filter_number)
-
-        self.x_axis_menu = make_axis_menu(
-                parent.x_metric, parent.on_change_x_metric)
-        self.y_axis_menu = make_axis_menu(
-                parent.y_metric, parent.on_change_y_metric)
-        self.filterlabel = gtk.Label()
-        self.filterlabel.set_markup("<b>Filters:</b>")
-        self.add_filter_button = gtk.Button(label="    +    ")
-        self.add_filter_button.connect('clicked',on_add_filter)
-        self.separator = gtk.SeparatorToolItem()
-
-        self.table = gtk.Table(4, 10)
-        self.table.attach(self.separator, 0, 1, 0, 4)
-        self.table.attach(self.y_axis_menu, 1, 5, 1, 2, xoptions=0, yoptions=0)
-        self.table.attach(gtk.Label(' vs. '), 5, 6, 1, 2, xoptions=0, yoptions=0)
-        self.table.attach(self.x_axis_menu, 6, 10, 1, 2, xoptions=0, yoptions=0)
-        self.table.attach(self.filterlabel,1,3,3,4,xoptions=2,yoptions=0)
-        self.table.attach(self.add_filter_button,3,4,3,4,xoptions=2,yoptions=0)
-
-        self.tool_item = gtk.ToolItem()
-        self.tool_item.add(self.table)
-
-        self.insert(self.tool_item, len(self.toolitems))
-
+        self.insert(tool_item, len(self.toolitems))
 
     def set_message(self, message):
         pass
 
 
+class FilterPane(gtk.Table):
+
+    __gsignals__ = {
+            'updated' : (
+                gobject.SIGNAL_RUN_LAST,
+                gobject.TYPE_NONE,
+                (),
+            )
+    }
+
+    def __init__(self, master):
+        gtk.Table.__init__(self)
+        self.master = master
+        self.filters = []
+        self.action_menu = self.make_action_menu()
+        self.add_button = self.make_add_button()
+        self.update_num_rows()
+
+    def get_action(self):
+        return self.action_menu.get_active_text().lower()
+
+    def get_masks(self, design):
+        keep = np.ones(len(design), dtype='bool')
+
+        for filter in self.filters:
+            name = filter.get_name()
+            op = filter.get_operator()
+            try: threshold = float(filter.get_threshold())
+            except: continue
+
+            metric = design.get_metric(name)
+
+            if op == '>': result = metric > threshold
+            if op == '<': result = metric < threshold
+            if op == '>=': result = metric >= threshold
+            if op == '<=': result = metric <= threshold
+            if op == '==': result = metric == threshold
+            if op == '!=': result = metric != threshold
+
+            filter.update_counter(sum(result), len(result))
+            keep &= result
+
+        return keep, np.logical_not(keep)
+
+    def make_add_button(self):
+        button = make_stock_button(gtk.STOCK_ADD)
+        button.connect('clicked', lambda _: self.add_filter())
+        align = gtk.Alignment(0.0, 0.5)
+        align.add(button)
+        return align
+
+    def make_action_menu(self):
+        combo_box = gtk.combo_box_new_text()
+        combo_box.append_text("Highlight")
+        combo_box.append_text("Hide")
+        combo_box.set_active(0)
+        combo_box.connect('changed', lambda _: self.emit('updated'))
+        return combo_box
+
+    def add_filter(self):
+        filter = self.Filter(self)
+        self.filters.append(filter)
+        self.update_num_rows()
+
+    def remove_filter(self, filter):
+        self.filters.remove(filter)
+        self.update_num_rows()
+
+    def update_num_rows(self):
+        # Remove everything.
+        for child in self.get_children():
+            self.remove(child)
+
+        # Re-create the labels.
+        action_label = gtk.Label("Action:")
+        action_label.set_alignment(0.0, 0.5)
+
+        filter_label = gtk.Label("Filters:")
+        filter_label.set_alignment(0.0, 0.5)
+
+        # Make the table the right size.
+        rows = max(len(self.filters) + 2, 2)
+        self.resize(rows, 6)
+
+        # Re-attach everything to the table.
+        fill = dict(xoptions=gtk.FILL, yoptions=gtk.FILL)
+
+        self.attach(action_label,       0, 1, 0, 1, **fill)
+        self.attach(self.action_menu,   1, 2, 0, 1, **fill)
+        self.attach(filter_label,       0, 1, 1, 2, **fill)
+
+        i = 0
+        for filter in self.filters:
+            filter.attach(i+1, **fill)
+            i += 1
+
+        self.attach(self.add_button,    1, 2, i+1, i+2, **fill)
+        self.emit('updated')
+        self.show_all()
+
+
+    class Filter(object):
+
+        def __init__(self, table):
+            self.table = table
+            self.filter_menu = table.master.setup_metric_menu()
+            self.operator_menu = make_operator_menu()
+            self.threshold_entry = gtk.Entry()
+            self.threshold_entry.set_width_chars(5)
+            self.delete_button = make_stock_button(gtk.STOCK_CANCEL)
+            self.counter = gtk.Label()
+
+            self.filter_menu.connect('changed', lambda _: table.emit('updated'))
+            self.operator_menu.connect('changed', lambda _: table.emit('updated'))
+            self.threshold_entry.connect('activate', lambda _: table.emit('updated'))
+            self.delete_button.connect('clicked', lambda _: table.remove_filter(self))
+
+        def __repr__(self):
+            return '<Filter "{} {} {}">'.format(
+                    self.filter_menu.get_active_text(),
+                    self.operator_menu.get_active_text(),
+                    self.threshold_entry.get_text() or '???')
+
+        def get_name(self):
+            return self.filter_menu.get_active_text()
+
+        def get_operator(self):
+            return self.operator_menu.get_active_text()
+
+        def get_threshold(self):
+            return self.threshold_entry.get_text()
+
+        def attach(self, i, **fill):
+            self.table.attach(self.filter_menu,      1, 2, i, i+1, **fill)
+            self.table.attach(self.operator_menu,    2, 3, i, i+1, **fill)
+            self.table.attach(self.threshold_entry,  3, 4, i, i+1, **fill)
+            self.table.attach(self.delete_button,    4, 5, i, i+1, **fill)
+            self.table.attach(self.counter,          5, 6, i, i+1, **fill)
+
+        def update_counter(self, num_kept, num_total):
+            self.counter.set_text('{}/{}'.format(num_kept, num_total))
+
+
+
+class MetricInfo(object):
+
+    def __init__(self, name, title, order, guide, limits):
+        self.name = name
+        self.title = title
+        self.guide = guide
+        self.limits = limits
+        self.order = order
+
+    def __repr__(self):
+        return '<MetricInfo name="{0}">'.format(self.name)
+
+
+
+def make_stock_button(stock):
+    image = gtk.Image()
+    image.set_from_stock(stock, gtk.ICON_SIZE_BUTTON)
+    button = gtk.Button()
+    button.add(image)
+    return button
+
+def make_operator_menu():
+    combo_box = gtk.combo_box_new_text()
+    options = '<', '>', '<=', '>=', '=', '!='
+    for option in options:
+        combo_box.append_text(option)
+    combo_box.set_active(0)
+    return combo_box
+
+
+default_x_metric = 'loop_rmsd'
+default_y_metric = 'total_score'
 
 metric_titles = {
         'total_score': 'Total Score (REU)',
         'loop_rmsd': u'Loop RMSD (Å)',
         'delta_buried_unsats': u'Δ Buried Unsats',
+}
+
+metric_orders = {
+}
+
+metric_guides = {
+        'loop_rmsd': 1.0,
 }
 
 metric_limits = {
@@ -1140,14 +1283,21 @@ metric_limits = {
             0.025 * max(x),
             max(x)),
 }
-metric_guides = {
-        'loop_rmsd': 1.0,
-}
 
 
-default_x_metric = 'loop_rmsd'
-default_y_metric = 'total_score'
-default_filter_metric = None
+def get_metric_title(metric, design=None):
+    naive_title = metric.replace('_', ' ').title()
+    return metric_titles.get(metric, naive_title)
+
+def get_metric_order(metric, design=None):
+    return metric_orders.get(metric, metric)
+
+def get_metric_guide(metric, design=None):
+    return metric_guides.get(metric)
+
+def get_metric_limits(metric, design=None):
+    return metric_limits.get(metric, lambda x: (min(x), max(x)))
+
 
 def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True):
     try:
@@ -1198,7 +1348,7 @@ def parse_records_from_pdbs(pdb_paths):
         # Read the PDB file, which we are assuming is gzipped.
 
         try:
-            def smart_open(path):
+            def smart_open(path): #
                 if path.endswith('.gz'): return gzip.open(path)
                 else: return open(path)
 
@@ -1247,12 +1397,6 @@ def try_to_run_command(command):
             message.format_secondary_text(str(error))
             message.run()
             message.destroy()
-
-def get_metric_title(metric):
-    naive_title = metric.title()
-    naive_title = naive_title.replace('_', ' ')
-    naive_title = naive_title.replace('-', ' ')
-    return metric_titles.get(metric, naive_title)
 
 
 def main():
