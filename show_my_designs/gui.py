@@ -253,7 +253,7 @@ class ShowMyDesigns (gtk.Window):
         }
         self.sorted_metrics = sorted(
                 self.metrics,
-                key=lambda k: self.metrics[k].order
+                key=lambda k: (self.metrics[k].order, self.metrics[k].title)
         )
         self.x_metric = (
                 default_x_metric
@@ -930,8 +930,8 @@ class ShowMyDesigns (gtk.Window):
 
         # If appropriate, draw guides for the given axes.
 
-        x_guide = get_metric_guide(self.x_metric)
-        y_guide = get_metric_guide(self.y_metric)
+        x_guide = self.metrics[self.x_metric].guide
+        y_guide = self.metrics[self.y_metric].guide
 
         if x_guide is not None:
             axes.axvline(x_guide, color='gray', linestyle='--')
@@ -1233,9 +1233,9 @@ class MetricInfo(object):
     def __init__(self, name, title, order, guide, limits):
         self.name = name
         self.title = title
+        self.order = order
         self.guide = guide
         self.limits = limits
-        self.order = order
 
     def __repr__(self):
         return '<MetricInfo name="{0}">'.format(self.name)
@@ -1258,7 +1258,7 @@ def make_operator_menu():
     return combo_box
 
 
-default_x_metric = 'loop_rmsd'
+default_x_metric = 'restraint_dist'
 default_y_metric = 'total_score'
 
 metric_titles = {
@@ -1290,7 +1290,7 @@ def get_metric_title(metric, design=None):
     return metric_titles.get(metric, naive_title)
 
 def get_metric_order(metric, design=None):
-    return metric_orders.get(metric, metric)
+    return metric_orders.get(metric)
 
 def get_metric_guide(metric, design=None):
     return metric_guides.get(metric)
