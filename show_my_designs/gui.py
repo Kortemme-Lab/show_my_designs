@@ -42,6 +42,7 @@ import matplotlib.pyplot as plt, numpy as np, scipy as sp, pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_gtkagg import FigureCanvasGTKAgg
 from matplotlib.backends.backend_gtkagg import NavigationToolbar2GTKAgg
+from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
 from pprint import pprint
 
 
@@ -233,8 +234,6 @@ class ShowMyDesigns (gtk.Window):
 
         # Setup the parent class.
 
-        self.filter_dict = {}
-        self.hidden_designs = {}
         gtk.Window.__init__(self)
         self.add_events(gtk.gdk.KEY_PRESS_MASK)
         self.connect('key-press-event', self.on_hotkey_press)
@@ -246,6 +245,8 @@ class ShowMyDesigns (gtk.Window):
         self.designs = designs
         self.keys = list()
         self.selected_model = None
+        self.is_legend_visible = False
+        self.is_model_count_visible = False
 
         self.metrics = {
                 k: next(iter(self)).metrics[k]
@@ -282,8 +283,13 @@ class ShowMyDesigns (gtk.Window):
         self.show_all()
         self.set_focus(None)
 
-        if len(self.designs) == 1:
-            self.model_list.hide()
+        n = len(self.designs)
+
+        self.hide_model_list() if n == 1 else self.show_model_list()
+        self.hide_filter_pane()
+        self.show_annotation_pane()
+        self.hide_legend()
+        self.hide_model_count()
 
     def __iter__(self):
         return iter(self.designs.values())
@@ -312,12 +318,27 @@ class ShowMyDesigns (gtk.Window):
         item.set_submenu(menu)
         bar.append(item)
 
-        item = gtk.CheckMenuItem("Filters")
-        item.connect('toggled', self.on_toggle_filter_pane)
+        item = self.model_list_toggle = gtk.CheckMenuItem("Model list")
+        item.connect('activate', self.on_toggle_model_list)
         menu.append(item)
 
-        item = gtk.CheckMenuItem("Annotations")
-        item.connect('toggled', self.on_toggle_annotation_pane)
+        item = self.filter_pane_toggle = gtk.CheckMenuItem("Filter pane")
+        item.connect('activate', self.on_toggle_filter_pane)
+        menu.append(item)
+
+        item = self.annotation_pane_toggle = gtk.CheckMenuItem("Annotation pane")
+        item.connect('activate', self.on_toggle_annotation_pane)
+        menu.append(item)
+
+        item = gtk.SeparatorMenuItem()
+        menu.append(item)
+
+        item = self.legend_toggle = gtk.CheckMenuItem("Legend")
+        item.connect('activate', self.on_toggle_legend)
+        menu.append(item)
+
+        item = self.model_count_toggle = gtk.CheckMenuItem("Model count")
+        item.connect('activate', self.on_toggle_model_count)
         menu.append(item)
 
         return bar
@@ -328,16 +349,16 @@ class ShowMyDesigns (gtk.Window):
         self.filter_pane = self.setup_filter_pane()
         self.annotation_pane = self.setup_annotation_pane()
 
-        sidebar = gtk.VPaned()
-        sidebar.add1(self.model_list)
-        sidebar.add2(self.filter_pane)
+        self.sidebar = gtk.VPaned()
+        self.sidebar.add1(self.model_list)
+        self.sidebar.add2(self.filter_pane)
 
         bottombar = gtk.VPaned()
         bottombar.add1(plot)
         bottombar.add2(self.annotation_pane)
 
         viewer = gtk.HPaned()
-        viewer.add1(sidebar)
+        viewer.add1(self.sidebar)
         viewer.add2(bottombar)
 
         return viewer
@@ -692,17 +713,35 @@ class ShowMyDesigns (gtk.Window):
         self.y_metric = widget.get_active_text()
         self.update_plot()
     
+    def on_toggle_model_list(self, widget):
+        if widget.get_active():
+            self.show_model_list()
+        else:
+            self.hide_model_list()
+
     def on_toggle_filter_pane(self, widget):
         if widget.get_active():
-            self.filter_pane.show()
+            self.show_filter_pane()
         else:
-            self.filter_pane.hide()
+            self.hide_filter_pane()
 
     def on_toggle_annotation_pane(self, widget):
         if widget.get_active():
-            self.annotation_pane.show()
+            self.show_annotation_pane()
         else:
-            self.annotation_pane.hide()
+            self.hide_annotation_pane()
+
+    def on_toggle_legend(self, widget):
+        if widget.get_active():
+            self.show_legend()
+        else:
+            self.hide_legend()
+
+    def on_toggle_model_count(self, widget):
+        if widget.get_active():
+            self.show_model_count()
+        else:
+            self.hide_model_count()
 
 
     def normal_mode(self):
@@ -841,6 +880,90 @@ class ShowMyDesigns (gtk.Window):
 
         chooser.destroy()
 
+    def hide_model_list(self):
+        self.model_list.hide()
+        self.model_list_toggle.set_active(False)
+        if not self.filter_pane.props.visible:
+            self.sidebar.hide()
+
+    def show_model_list(self):
+        self.model_list.show()
+        self.model_list_toggle.set_active(True)
+        self.sidebar.show()
+
+    def toggle_model_list(self):
+        if self.model_list.props.visible:
+            self.hide_model_list()
+        else:
+            self.show_model_list()
+
+    def hide_filter_pane(self):
+        self.filter_pane.hide()
+        self.filter_pane_toggle.set_active(False)
+        if not self.model_list.props.visible:
+            self.sidebar.hide()
+
+    def show_filter_pane(self):
+        self.filter_pane.show()
+        self.filter_pane_toggle.set_active(True)
+        self.sidebar.show()
+
+    def toggle_filter_pane(self):
+        if self.filter_pane.props.visible:
+            self.hide_filter_pane()
+        else:
+            self.show_filter_pane()
+
+    def hide_annotation_pane(self):
+        self.annotation_pane.hide()
+        self.annotation_pane_toggle.set_active(False)
+
+    def show_annotation_pane(self):
+        self.annotation_pane.show()
+        self.annotation_pane_toggle.set_active(True)
+
+    def toggle_annotation_pane(self):
+        if self.annotation_pane.props.visible:
+            self.hide_annotation_pane()
+        else:
+            self.show_annotation_pane()
+
+    def hide_legend(self):
+        if self.is_legend_visible:
+            self.is_legend_visible = False
+            self.legend_toggle.set_active(False)
+            self.update_plot()
+
+    def show_legend(self):
+        if not self.is_legend_visible:
+            self.is_legend_visible = True
+            self.legend_toggle.set_active(True)
+            self.update_plot()
+
+    def toggle_legend(self):
+        if self.is_legend_visible:
+            self.hide_legend()
+        else:
+            self.show_legend()
+
+    def hide_model_count(self):
+        if self.is_model_count_visible:
+            self.is_model_count_visible = False
+            self.model_count_toggle.set_active(False)
+            self.update_plot()
+
+    def show_model_count(self):
+        if not self.is_model_count_visible:
+            self.is_model_count_visible = True
+            self.model_count_toggle.set_active(True)
+            self.update_plot()
+
+    def toggle_model_count(self):
+        if self.is_model_count_visible:
+            self.hide_model_count()
+        else:
+            self.show_model_count()
+
     def plot_models(self, axes, designs, **kwargs):
         from itertools import count
 
@@ -889,13 +1012,15 @@ class ShowMyDesigns (gtk.Window):
             if keep[rep]:
                 axes.scatter(
                         [x[rep]], [y[rep]],
-                        s=60, c=yellow[1], marker='o', edgecolor='none')
+                        s=60, c=yellow[1], marker='o', edgecolor='none',
+                        label='_nolabel_')
 
             # Highlight the filtered points, if that's what the user wants.
             if action == 'highlight':
                 axes.scatter(
                         x[drop], y[drop],
-                        s=size, c=grey[4], marker='o', edgecolor='none')
+                        s=size, c=grey[4], marker='o', edgecolor='none',
+                        label='_nolabel_')
 
             # Draw the whole score vs distance plot.
             lines = axes.scatter(
@@ -928,20 +1053,29 @@ class ShowMyDesigns (gtk.Window):
             right=x_max + x_pad,
         )
 
-        # If appropriate, draw guides for the given axes.
+        # Draw guides for axes the that have them.
 
         x_guide = self.metrics[self.x_metric].guide
         y_guide = self.metrics[self.y_metric].guide
 
         if x_guide is not None:
-            axes.axvline(x_guide, color='gray', linestyle='--')
+            axes.axvline(x_guide, color=grey[3], linestyle='--')
         if y_guide is not None:
-            axes.axhline(y_guide, color='gray', linestyle='--')
+            axes.axhline(y_guide, color=grey[3], linestyle='--')
 
-        # If between 1 and 5 designs are being shown, show a legend.
+        # Draw the legend if the user enabled it.
 
-        if labels and 1 < len(designs) < 5:
+        if self.is_legend_visible:
             axes.legend(loc='upper right')
+
+        if self.is_model_count_visible:
+            axes.annotate(
+                    ', '.join(str(len(x)) for x in designs),
+                    xy=(0, 1), xycoords='axes fraction',
+                    xytext=(8, -8), textcoords='offset points',
+                    verticalalignment='top',
+            )
+
 
     def update_everything(self):
         self.update_annotations()
@@ -981,61 +1115,6 @@ class ShowMyDesigns (gtk.Window):
 
         selector.select_path((0,))
 
-
-    def hide_designs(self,filter_number):
-        filter_parameters = self.filter_dict[filter_number]
-        filter_metric = filter_parameters[0].get_active_text()
-        filter_option = filter_parameters[1].get_active_text()
-        filter_input = float(filter_parameters[2].get_text())
-
-        designs = self.designs
-        for key in designs:
-            design = designs[key]
-            self.hidden_designs[filter_number][design] = []
-            for index, value in enumerate(design.get_metric(filter_metric)):
-                if self.passes_filter(value,filter_option,filter_input) == False:
-                    self.hidden_designs[filter_number][design].append(index)
-        self.update_plot()
-
-    def passes_filter(self,design_value,filter_option,filter_input):
-        if filter_option == "!=":
-            if design_value == filter_input:
-                return False
-            else:
-                return True
-
-        elif filter_option == "=":
-            if design_value == filter_input:
-                return True
-            else:
-                return False
-
-        elif filter_option == ">":
-            if design_value > filter_input:
-                return True
-            else:
-                return False
-
-        elif filter_option == "<":
-            if design_value < filter_input:
-                return True
-            else:
-                return False
-
-        elif filter_option == ">=":
-            if design_value >= filter_input:
-                return True
-            else:
-                return False
-
-        elif filter_option == "<=":
-            if design_value <= filter_input:
-                return True
-            else:
-                return False
-
-        else:
-            return True
 
 
 class FigureCanvas (FigureCanvasGTKAgg):
