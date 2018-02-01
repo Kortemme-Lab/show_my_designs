@@ -246,6 +246,7 @@ class ShowMyDesigns (gtk.Window):
         self.keys = list()
         self.selected_model = None
         self.is_legend_visible = False
+        self.is_representative_visible = False
         self.is_model_count_visible = False
 
         self.metrics = {
@@ -289,6 +290,7 @@ class ShowMyDesigns (gtk.Window):
         self.hide_filter_pane()
         self.show_annotation_pane()
         self.hide_legend()
+        self.show_representative()
         self.hide_model_count()
 
     def __iter__(self):
@@ -335,6 +337,10 @@ class ShowMyDesigns (gtk.Window):
 
         item = self.legend_toggle = gtk.CheckMenuItem("Legend")
         item.connect('activate', self.on_toggle_legend)
+        menu.append(item)
+
+        item = self.representative_toggle = gtk.CheckMenuItem("Representative")
+        item.connect('activate', self.on_toggle_representative)
         menu.append(item)
 
         item = self.model_count_toggle = gtk.CheckMenuItem("Model count")
@@ -737,6 +743,12 @@ class ShowMyDesigns (gtk.Window):
         else:
             self.hide_legend()
 
+    def on_toggle_representative(self, widget):
+        if widget.get_active():
+            self.show_representative()
+        else:
+            self.hide_representative()
+
     def on_toggle_model_count(self, widget):
         if widget.get_active():
             self.show_model_count()
@@ -940,6 +952,18 @@ class ShowMyDesigns (gtk.Window):
             self.legend_toggle.set_active(True)
             self.update_plot()
 
+    def hide_representative(self):
+        if self.is_representative_visible:
+            self.is_representative_visible = False
+            self.representative_toggle.set_active(False)
+            self.update_plot()
+
+    def show_representative(self):
+        if not self.is_representative_visible:
+            self.is_representative_visible = True
+            self.representative_toggle.set_active(True)
+            self.update_plot()
+
     def toggle_legend(self):
         if self.is_legend_visible:
             self.hide_legend()
@@ -1009,7 +1033,7 @@ class ShowMyDesigns (gtk.Window):
             size = np.clip(7500 / max(len(x), 1), 2, 15)
 
             # Highlight the representative model.
-            if keep[rep]:
+            if self.is_representative_visible and keep[rep]:
                 axes.scatter(
                         [x[rep]], [y[rep]],
                         s=60, c=yellow[1], marker='o', edgecolor='none',
