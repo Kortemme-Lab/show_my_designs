@@ -634,8 +634,10 @@ class ShowMyDesigns (gtk.Window):
         # Figure out which model was clicked.
 
         index, design = self.selected_model
+        rep_index = design.representative
         path = os.path.join(design.directory, design.paths[index])
-        is_rep = (design.representative == index)
+        rep_path = os.path.join(design.directory, design.paths[rep_index])
+        is_rep = (index == rep_index)
         self.selected_model = None
 
         # Search for scripts that can perform some action using the clicked
@@ -664,7 +666,7 @@ class ShowMyDesigns (gtk.Window):
 
             item = gtk.MenuItem(title)
             item.connect('activate',
-                    lambda *args: try_to_run_command([script, path]))
+                    lambda *args: try_to_run_command([script, path, rep_path]))
             file_menu.append(item)
 
         view_in_pymol = gtk.MenuItem("View model in pymol")
