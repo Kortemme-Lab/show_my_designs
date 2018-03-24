@@ -1406,14 +1406,7 @@ def get_metric_limits(metric, design=None):
 
 def show_my_designs(directories, use_cache=True, launch_gui=True, fork_gui=True):
     try:
-        try:
-            designs = load_designs(directories, use_cache=use_cache)
-        except IOError as error:
-            if str(error):
-                print "Error:", str(error)
-                sys.exit()
-            else:
-                raise
+        designs = load_designs(directories, use_cache=use_cache)
 
         if designs and launch_gui:
             # If the user wants to run in a background process, try to fork.
@@ -1435,7 +1428,13 @@ def load_designs(directories, use_cache=True):
     designs = collections.OrderedDict()
 
     for directory in directories:
-        designs[directory] = Design(directory, use_cache)
+        try:
+            designs[directory] = Design(directory, use_cache)
+        except IOError as error:
+            if str(error):
+                print "Error:", str(error)
+            else:
+                raise
 
     return designs
 
