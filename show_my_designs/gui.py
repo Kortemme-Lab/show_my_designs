@@ -1478,8 +1478,11 @@ def parse_record_from_pdb(record, pdb_path, lines):
     # of these lines are specific to certain simulations.
 
     for line in lines:
-        if line.startswith('total_score') or line.startswith('pose'):
+        if line.startswith('total_score'):
             record['total_score'] = float(line.split()[1])
+
+        if line.startswith('pose'):
+            record['total_score'] = float(line.split()[-1])
 
         if line.startswith('loop_backbone_rmsd'):
             record['loop_rmsd'] = float(line.split()[1])
